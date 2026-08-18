@@ -469,12 +469,21 @@ class WebRTCManager {
             const track = stream.getVideoTracks()[0];
             track.enabled = this.isCameraOn;
             this.localStream.addTrack(track);
+            
+            // 更新所有 PeerConnection 的视频轨道
             this.peerConnections.forEach(pc => {
                 const sender = pc.getSenders().find(s => s.track && s.track.kind === 'video');
                 if (sender) sender.replaceTrack(track);
                 else pc.addTrack(track, this.localStream);
             });
-            if (this.onLocalStreamReady) this.onLocalStreamReady(this.localStream);
+            
+            // 通知本地流更新（强制刷新视频元素）
+            if (this.onLocalStreamReady) {
+                // 延迟一帧确保轨道已附加
+                requestAnimationFrame(() => {
+                    this.onLocalStreamReady(this.localStream);
+                });
+            }
         }
     }
     

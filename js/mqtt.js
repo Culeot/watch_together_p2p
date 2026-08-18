@@ -38,17 +38,8 @@ class MQTTManager {
             try {
                 this.client = mqtt.connect(CONFIG.MQTT_BROKER_URL, {
                     ...CONFIG.MQTT_OPTIONS,
-                    clientId: this.clientId,
-                    will: {
-                        topic: this.topic,
-                        payload: JSON.stringify({
-                            type: 'disconnect-notify',
-                            from: this.clientId,
-                            timestamp: Date.now()
-                        }),
-                        qos: 0,
-                        retain: false
-                    }
+                    clientId: this.clientId
+                    // 移除 will 消息，改用心跳检测离线
                 });
                 
                 this.client.on('connect', () => {
@@ -68,6 +59,11 @@ class MQTTManager {
                     });
                 });
                 
+                // 心跳：定期发送在线状态
+                this.client.on('connect', () => {
+                    this._startHeartbeat();
+                });
+                
                 this.client.on('message', (topic, message) => {
                     this._handleMessage(message.toString());
                 });
@@ -81,6 +77,7 @@ class MQTTManager {
                     console.log('[MQTT] Connection closed');
                     this.connected = false;
                     this._notifyConnectionChange(false);
+                    this._stopHeartbeat();
                     if (this.onDisconnect) {
                         this.onDisconnect();
                     }
@@ -104,9 +101,38 @@ class MQTTManager {
     }
     
     /**
+     * 启动心跳
+     * @private
+     */
+    _startHeartbeat() {
+        this._stopHeartbeat();
+        this._heartbeatInterval = setInterval(() => {
+            if (this.connected && this.client) {
+                this.client.publish(this.topic, JSON.stringify({
+                    type: 'heartbeat',
+                    from: this.clientId,
+                    timestamp: Date.now()
+                }), { qos: 0 });
+            }
+        }, 10000); // 每10秒发送一次心跳
+    }
+    
+    /**
+     * 停止心跳
+     * @private
+     */
+    _stopHeartbeat() {
+        if (this._heartbeatInterval) {
+            clearInterval(this._heartbeatInterval);
+            this._heartbeatInterval = null;
+        }
+    }
+    
+    /**
      * 断开连接
      */
     disconnect() {
+        this._stopHeartbeat();
         if (this.client) {
             try {
                 this.client.end(true);
@@ -182,12 +208,12 @@ class MQTTManager {
             const message = JSON.parse(rawMessage);
             const { type } = message;
             
-            console.log('[MQTT] Received:', type, message);
-            
-            // 忽略自己发送的消息
-            if (message.from === this.clientId) {
+            // 忽略自己发送的消息和心跳
+            if (message.from === this.clientId || type === 'heartbeat') {
                 return;
             }
+            
+            console.log('[MQTT] Received:', type, message);
             
             // 调用对应类型的处理器
             const handlers = this.messageHandlers.get(type);

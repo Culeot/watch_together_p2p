@@ -11,10 +11,12 @@ class App {
         this.isAdmin = false;
         this.isPC = !webrtcManager.isMobile;
         this.members = new Map(); // clientId -> {id, name, isAdmin, isPC, joinedAt}
+        this.memberHeartbeats = new Map(); // clientId -> lastHeartbeatTime
         this.shareRequests = []; // 共享请求列表
         this.currentSharer = null; // 当前共享者 {id, name, quality}
         this.isInRoom = false;
         this.hasInitMedia = false;
+        this._heartbeatCheckInterval = null;
     }
     
     /**
@@ -27,15 +29,15 @@ class App {
         // 设置 MQTT 消息处理器
         this._setupMessageHandlers();
         
-        // 设置 WebRTC 远程流回调
+        // 设置 WebRTC 远程流回调（在连接前设置好）
         webrtcManager.onRemoteStream = (clientId, stream) => {
             const member = this.members.get(clientId);
             const name = member ? member.name : '未知';
             const audioTracks = stream.getAudioTracks();
             const isMuted = audioTracks.length === 0 || !audioTracks[0].enabled;
             uiManager.addPipVideo(clientId, stream, name, false, isMuted);
-            // 同时更新成员列表中的视频
             uiManager.updateMemberVideo(clientId, stream, name, isMuted);
+            console.log('[App] Remote stream from', clientId, 'tracks:', stream.getTracks().map(t => t.kind));
         };
         
         webrtcManager.onRemoteStreamRemoved = (clientId) => {
@@ -54,14 +56,8 @@ class App {
         };
         
         mqttManager.onDisconnect = () => {
-            if (this.isInRoom) {
-                if (this.isAdmin) {
-                    // 管理员断开，房间解散
-                    this._broadcastAdminLeft();
-                } else {
-                    uiManager.showToast('与房间断开连接', 'error');
-                }
-            }
+            // 不要立即标记为离开，等待重连
+            console.log('[App] MQTT disconnected, waiting for reconnect...');
         };
         
         console.log('[App] Initialized, clientId:', this.clientId);
@@ -91,6 +87,7 @@ class App {
                 isPC: this.isPC,
                 joinedAt: Date.now()
             });
+            this.memberHeartbeats.set(this.clientId, Date.now());
             
             // 广播房间创建消息
             mqttManager.publish({
@@ -188,6 +185,16 @@ class App {
      * @private
      */
     _setupMessageHandlers() {
+        // 心跳处理：更新成员在线状态
+        mqttManager.on('heartbeat', (msg) => {
+            if (msg.from && this.members.has(msg.from)) {
+                this.memberHeartbeats.set(msg.from, Date.now());
+            }
+        });
+        
+        // 启动心跳超时检测
+        this._startHeartbeatCheck();
+        
         // 自己成为管理员后收到的消息
         
         // 加入请求（仅管理员处理）
@@ -439,12 +446,14 @@ class App {
             isPC: this.isPC,
             joinedAt: Date.now()
         });
+        this.memberHeartbeats.set(this.clientId, Date.now());
         
         // 注册已有成员
         if (msg.members) {
             msg.members.forEach(m => {
                 if (m.id !== this.clientId) {
                     this.members.set(m.id, m);
+                    this.memberHeartbeats.set(m.id, Date.now());
                 }
             });
         }
@@ -493,6 +502,7 @@ class App {
             isPC: msg.isPC,
             joinedAt: Date.now()
         });
+        this.memberHeartbeats.set(msg.userId, Date.now());
         
         uiManager.updateRoomInfo(this.roomId, this.members.size);
         uiManager.updateMemberList(Array.from(this.members.values()), this.clientId, this.isAdmin);
@@ -530,6 +540,7 @@ class App {
         if (!member) return;
         
         this.members.delete(clientId);
+        this.memberHeartbeats.delete(clientId);
         
         // 关闭与该用户的连接
         webrtcManager.closeConnection(clientId);
@@ -1115,9 +1126,12 @@ class App {
         this.isInRoom = false;
         this.isAdmin = false;
         this.members.clear();
+        this.memberHeartbeats.clear();
         this.shareRequests = [];
         this.currentSharer = null;
         this.hasInitMedia = false;
+        
+        this._stopHeartbeatCheck();
         
         webrtcManager.closeAllConnections();
         webrtcManager.localStream = null;
@@ -1142,6 +1156,36 @@ class App {
         this.shareRequests = [];
         this.currentSharer = null;
         mqttManager.disconnect();
+    }
+    
+    /**
+     * 启动心跳超时检测
+     * @private
+     */
+    _startHeartbeatCheck() {
+        this._stopHeartbeatCheck();
+        this._heartbeatCheckInterval = setInterval(() => {
+            const now = Date.now();
+            const timeout = 30000; // 30秒无心跳视为离线
+            for (const [clientId, lastBeat] of this.memberHeartbeats.entries()) {
+                if (now - lastBeat > timeout && clientId !== this.clientId) {
+                    console.log('[App] Member timeout:', clientId);
+                    this._handleUserLeave(clientId);
+                    this.memberHeartbeats.delete(clientId);
+                }
+            }
+        }, 5000); // 每5秒检查一次
+    }
+    
+    /**
+     * 停止心跳超时检测
+     * @private
+     */
+    _stopHeartbeatCheck() {
+        if (this._heartbeatCheckInterval) {
+            clearInterval(this._heartbeatCheckInterval);
+            this._heartbeatCheckInterval = null;
+        }
     }
 }
 
