@@ -33,9 +33,9 @@ class App {
                 isPC: this.isPC
             };
             localStorage.setItem('watchtogether_room', JSON.stringify(state));
-            console.log('[App] State saved:', state);
+            console.warn('[SAVE STATE] saved:', JSON.stringify(state));
         } catch (e) {
-            console.error('[App] Save state failed:', e);
+            console.error('[SAVE STATE] failed:', e);
         }
     }
     
