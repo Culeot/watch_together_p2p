@@ -539,16 +539,19 @@ class App {
         uiManager.updateRoomInfo(this.roomId, this.members.size);
         uiManager.updateMemberList(Array.from(this.members.values()), this.clientId, this.isAdmin);
         
-        // 为新成员创建 WebRTC offer
-        try {
-            const offer = await webrtcManager.createOffer(msg.from);
-            mqttManager.publish({
-                type: CONFIG.MSG_TYPE.WEBRTC_OFFER,
-                target: msg.from,
-                sdp: offer.sdp
-            });
-        } catch (err) {
-            console.error('[App] Create offer for new member error:', err);
+        // 修复：为新成员创建 WebRTC offer（clientId 较小的一方发起）
+        if (this.clientId < msg.from) {
+            try {
+                const offer = await webrtcManager.createOffer(msg.from);
+                mqttManager.publish({
+                    type: CONFIG.MSG_TYPE.WEBRTC_OFFER,
+                    target: msg.from,
+                    sdp: offer.sdp,
+                    sdpType: offer.type
+                });
+            } catch (err) {
+                console.error('[App] Create offer for new member error:', err);
+            }
         }
     }
     
@@ -579,22 +582,18 @@ class App {
             });
         }
         
-        // 更新 UI
         uiManager.updateRoomInfo(this.roomId, this.members.size);
         uiManager.updateMemberList(Array.from(this.members.values()), this.clientId, this.isAdmin);
         uiManager.hideLoading();
         uiManager.showToast('已加入房间！', 'success');
         
-        // 保存状态，刷新后恢复
         this._saveState();
-        
-        // 加载音视频设备列表
         this._loadDevices();
         
-        // Mesh 拓扑：新成员加入后，主动为所有已有成员创建 offer
+        // 修复：视频互看不到 - 双向连接，clientId 较小的发起 offer
         if (this.hasInitMedia && webrtcManager.localStream) {
             for (const member of this.members.values()) {
-                if (member.id !== this.clientId) {
+                if (member.id !== this.clientId && this.clientId < member.id) {
                     this._createOfferForUser(member.id);
                 }
             }
@@ -617,7 +616,7 @@ class App {
      * @private
      */
     _handleUserJoined(msg) {
-        if (msg.userId === this.clientId) return; // 自己
+        if (msg.userId === this.clientId) return;
         
         this.members.set(msg.userId, {
             id: msg.userId,
@@ -632,12 +631,12 @@ class App {
         uiManager.updateMemberList(Array.from(this.members.values()), this.clientId, this.isAdmin);
         uiManager.showToast(`${msg.name} 加入了房间`, 'info');
         
-        // Mesh 拓扑：为新成员创建 WebRTC offer（双向连接）
-        // 管理员已经在 _handleRequest 中创建过 offer，跳过避免重复
-        if (this.isAdmin) return;
-        
+        // 修复：视频互看不到 - 双向连接，clientId 较小的发起 offer
         if (this.isInRoom && this.hasInitMedia && webrtcManager.localStream) {
-            this._createOfferForUser(msg.userId);
+            // 只由 clientId 较小的一方发起 offer，避免重复
+            if (this.clientId < msg.userId) {
+                this._createOfferForUser(msg.userId);
+            }
         }
     }
     
@@ -645,13 +644,15 @@ class App {
      * 为指定用户创建 WebRTC offer
      * @private
      */
+    // 修复：视频互看不到 - 使用新的 offer 格式
     async _createOfferForUser(userId) {
         try {
             const offer = await webrtcManager.createOffer(userId);
             mqttManager.publish({
                 type: CONFIG.MSG_TYPE.WEBRTC_OFFER,
                 target: userId,
-                sdp: offer.sdp
+                sdp: offer.sdp,
+                sdpType: offer.type
             });
         } catch (err) {
             console.error('[App] Create offer for user error:', err);

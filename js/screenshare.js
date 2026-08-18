@@ -101,13 +101,24 @@ class ScreenShareManager {
         } catch (err) { console.error('[ScreenShare] Change quality error:', err); }
     }
     
+    // 修复：视频互看不到 - 简化 handleShareOffer
     async handleShareOffer(fromClientId, sdp, quality) {
-        const pc = this._createSharePeerConnection(fromClientId);
+        console.log(`[ScreenShare] 收到 offer 来自 ${fromClientId}`);
+        const existing = this.peerConnections.get(fromClientId);
+        if (existing) { existing.close(); this.peerConnections.delete(fromClientId); }
+        
+        const pc = new RTCPeerConnection({ iceServers: CONFIG.ICE_SERVERS });
+        this.peerConnections.set(fromClientId, pc);
+        
+        this._setupSharePeerConnectionCallbacks(pc, fromClientId);
         if (quality) this.currentQuality = quality;
-        await pc.setRemoteDescription(new RTCSessionDescription(sdp));
+        
+        await pc.setRemoteDescription(new RTCSessionDescription({ sdp, type: 'offer' }));
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
-        return answer;
+        
+        console.log(`[ScreenShare] 发送 answer 给 ${fromClientId}`);
+        return { sdp: pc.localDescription.sdp, type: pc.localDescription.type };
     }
     
     async handleShareAnswer(fromClientId, sdp) {
@@ -125,38 +136,42 @@ class ScreenShareManager {
         if (pc) { try { pc.getSenders().forEach(sender => { if (sender.track) sender.track.stop(); }); pc.close(); } catch (e) {} this.peerConnections.delete(clientId); }
     }
     
+    // 修复：视频互看不到 - 返回完整 offer 对象
     async createShareOffer(targetClientId, quality) {
-        const pc = this._createSharePeerConnection(targetClientId);
-        if (this.screenStream) this.screenStream.getTracks().forEach(track => { pc.addTrack(track, this.screenStream); });
-        this._setShareCodecPreference(pc);
-        const offer = await pc.createOffer();
-        await pc.setLocalDescription(offer);
-        return offer;
-    }
-    
-    _createSharePeerConnection(targetClientId) {
+        console.log(`[ScreenShare] 发送 offer 给 ${targetClientId}`);
         const existing = this.peerConnections.get(targetClientId);
-        if (existing) existing.close();
-        const pc = new RTCPeerConnection({ iceServers: CONFIG.ICE_SERVERS, iceCandidatePoolSize: 10 });
+        if (existing) { existing.close(); this.peerConnections.delete(targetClientId); }
+        
+        const pc = new RTCPeerConnection({ iceServers: CONFIG.ICE_SERVERS });
         this.peerConnections.set(targetClientId, pc);
         
+        if (!this.screenStream) await this.getScreenStream(quality);
+        if (this.screenStream) this.screenStream.getTracks().forEach(track => { pc.addTrack(track, this.screenStream); });
+        
+        this._setupSharePeerConnectionCallbacks(pc, targetClientId);
+        
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        return { sdp: pc.localDescription.sdp, type: pc.localDescription.type };
+    }
+    
+    _setupSharePeerConnectionCallbacks(pc, clientId) {
         pc.onicecandidate = (event) => {
             if (event.candidate && window.app && window.app.sendShareIceCandidate) {
-                window.app.sendShareIceCandidate(targetClientId, event.candidate);
+                console.log(`[ScreenShare] 发送 ICE 给 ${clientId}`);
+                window.app.sendShareIceCandidate(clientId, event.candidate);
             }
         };
         pc.onconnectionstatechange = () => {
-            if (pc.connectionState === 'failed' || pc.connectionState === 'closed') this.closeConnection(targetClientId);
+            console.log(`[ScreenShare] 连接状态变化 ${clientId}: ${pc.connectionState}`);
+            if (pc.connectionState === 'failed' || pc.connectionState === 'closed') this.closeConnection(clientId);
         };
-        // 修复：ontrack 正确处理远端屏幕流
         pc.ontrack = (event) => {
-            console.log('[ScreenShare] Remote track:', event.track.kind);
-            if (event.streams[0]) {
-                const stream = event.streams[0];
-                if (this.onRemoteScreenStream) this.onRemoteScreenStream(stream, this.currentQuality || CONFIG.DEFAULT_QUALITY);
+            console.log(`[ScreenShare] 收到远端轨道来自 ${clientId}: ${event.track.kind}`);
+            if (event.streams[0] && this.onRemoteScreenStream) {
+                this.onRemoteScreenStream(event.streams[0], this.currentQuality || CONFIG.DEFAULT_QUALITY);
             }
         };
-        return pc;
     }
     
     // 修复：编码偏好 - 移动端 H.264 优先
