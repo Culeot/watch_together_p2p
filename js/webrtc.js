@@ -1,7 +1,6 @@
 /**
  * webrtc.js - 连麦 WebRTC 管理
- * 管理房间内成员之间的音视频 P2P 连接（Mesh 拓扑）
- * 修复：H264 编码优先、ontrack 正确处理、回声消除
+ * 修复：轨道不重复添加、H264 编码、ontrack 正确处理、回声消除
  */
 
 class WebRTCManager {
@@ -16,7 +15,6 @@ class WebRTCManager {
         this.isMobile = this.detectMobile();
         this.audioContext = null;
         this.analyser = null;
-        this.micVolume = 0;
         this._volumeCheckInterval = null;
     }
     
@@ -28,41 +26,28 @@ class WebRTCManager {
         if (this.localStream) return this.localStream;
         
         const constraints = this.isMobile
-            ? { 
-                audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-                video: CONFIG.WEBRTC_MOBILE_VIDEO
-              }
-            : { 
-                audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-                video: CONFIG.WEBRTC_VIDEO
-              };
+            ? { audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }, video: CONFIG.WEBRTC_MOBILE_VIDEO }
+            : { audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }, video: CONFIG.WEBRTC_VIDEO };
         
         try {
             this.localStream = await navigator.mediaDevices.getUserMedia(constraints);
-            this.localStream.getAudioTracks().forEach(track => { track.enabled = false; });
-            this.localStream.getVideoTracks().forEach(track => { track.enabled = false; });
-            
-            // 修复：初始化音频分析器用于回声检测
+            this.localStream.getAudioTracks().forEach(t => { t.enabled = false; });
+            this.localStream.getVideoTracks().forEach(t => { t.enabled = false; });
             this._initAudioAnalysis();
-            
             if (this.onLocalStreamReady) this.onLocalStreamReady(this.localStream);
             return this.localStream;
         } catch (err) {
             console.error('[WebRTC] getUserMedia error:', err);
             try {
                 this.localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-                this.localStream.getAudioTracks().forEach(track => { track.enabled = false; });
+                this.localStream.getAudioTracks().forEach(t => { t.enabled = false; });
                 this._initAudioAnalysis();
                 if (this.onLocalStreamReady) this.onLocalStreamReady(this.localStream);
                 return this.localStream;
-            } catch (audioErr) {
-                console.error('[WebRTC] Audio-only fallback failed:', audioErr);
-                throw audioErr;
-            }
+            } catch (audioErr) { throw audioErr; }
         }
     }
     
-    // 修复：初始化 Web Audio API 进行音量检测
     _initAudioAnalysis() {
         if (!this.localStream) return;
         try {
@@ -73,80 +58,78 @@ class WebRTCManager {
             this.analyser.smoothingTimeConstant = 0.8;
             source.connect(this.analyser);
             this._startVolumeCheck();
-        } catch (e) {
-            console.warn('[WebRTC] Audio analysis init failed:', e);
-        }
+        } catch (e) {}
     }
     
-    // 修复：音量检测，用于回声抑制
     _startVolumeCheck() {
         if (this._volumeCheckInterval) clearInterval(this._volumeCheckInterval);
+        if (!this.analyser) return;
         const dataArray = new Uint8Array(this.analyser.frequencyBinCount);
-        let lowVolumeCount = 0;
-        let highVolumeCount = 0;
-        
+        let highCount = 0, lowCount = 0;
         this._volumeCheckInterval = setInterval(() => {
             if (!this.analyser) return;
             this.analyser.getByteFrequencyData(dataArray);
             const avg = dataArray.reduce((a, b) => a + b) / dataArray.length;
-            this.micVolume = avg;
-            
-            // 修复：当本地麦克风音量持续高时，自动降低扬声器音量防止回声
-            if (avg > 30) {
-                highVolumeCount++;
-                lowVolumeCount = 0;
-                if (highVolumeCount > 10 && window.app) {
-                    window.app._suppressSpeaker();
-                }
-            } else {
-                lowVolumeCount++;
-                highVolumeCount = 0;
-                if (lowVolumeCount > 15 && window.app) {
-                    window.app._restoreSpeaker();
-                }
-            }
+            if (avg > 30) { highCount++; lowCount = 0; if (highCount > 10 && window.app) window.app._suppressSpeaker(); }
+            else { lowCount++; highCount = 0; if (lowCount > 15 && window.app) window.app._restoreSpeaker(); }
         }, 100);
     }
     
     async toggleMic() {
         if (!this.localStream) await this.getLocalStream();
-        const audioTracks = this.localStream.getAudioTracks();
-        if (audioTracks.length === 0) await this.enableAudio();
-        const tracks = this.localStream.getAudioTracks();
+        if (this.localStream.getAudioTracks().length === 0) await this.enableAudio();
         this.isMicOn = !this.isMicOn;
-        tracks.forEach(track => { track.enabled = this.isMicOn; });
+        this.localStream.getAudioTracks().forEach(t => { t.enabled = this.isMicOn; });
         return this.isMicOn;
     }
     
     async toggleCamera() {
         if (!this.localStream) await this.getLocalStream();
-        const videoTracks = this.localStream.getVideoTracks();
-        if (videoTracks.length === 0) await this.enableVideo();
-        const tracks = this.localStream.getVideoTracks();
+        if (this.localStream.getVideoTracks().length === 0) await this.enableVideo();
         this.isCameraOn = !this.isCameraOn;
-        tracks.forEach(track => { track.enabled = this.isCameraOn; });
+        this.localStream.getVideoTracks().forEach(t => { t.enabled = this.isCameraOn; });
         return this.isCameraOn;
     }
     
+    // 修复：createOffer 不重复添加轨道
     async createOffer(targetClientId) {
-        const pc = this._createPeerConnection(targetClientId);
+        // 如果已存在连接，先关闭
+        const existing = this.peerConnections.get(targetClientId);
+        if (existing) existing.close();
+        
+        const pc = new RTCPeerConnection({ iceServers: CONFIG.ICE_SERVERS, iceCandidatePoolSize: 10 });
+        this.peerConnections.set(targetClientId, pc);
+        
+        // 修复：只在这里添加轨道，_createPeerConnection 不再添加
         if (this.localStream) {
             this.localStream.getTracks().forEach(track => { pc.addTrack(track, this.localStream); });
         } else {
             await this.getLocalStream();
             this.localStream.getTracks().forEach(track => { pc.addTrack(track, this.localStream); });
         }
+        
+        this._setupPeerConnection(pc, targetClientId);
         this._setCodecPreference(pc);
+        
         const offer = await pc.createOffer();
         await pc.setLocalDescription(offer);
         return offer;
     }
     
     async handleOffer(fromClientId, sdp) {
-        const pc = this._createPeerConnection(fromClientId);
+        const existing = this.peerConnections.get(fromClientId);
+        if (existing) existing.close();
+        
+        const pc = new RTCPeerConnection({ iceServers: CONFIG.ICE_SERVERS, iceCandidatePoolSize: 10 });
+        this.peerConnections.set(fromClientId, pc);
+        
+        // 修复：只在这里添加轨道
         if (!this.localStream) await this.getLocalStream();
         this.localStream.getTracks().forEach(track => { pc.addTrack(track, this.localStream); });
+        
+        this._setupPeerConnection(pc, fromClientId);
         this._setCodecPreference(pc);
+        
         await pc.setRemoteDescription(new RTCSessionDescription(sdp));
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
@@ -160,112 +143,66 @@ class WebRTCManager {
     
     async handleIceCandidate(fromClientId, candidate) {
         const pc = this.peerConnections.get(fromClientId);
-        if (pc) {
-            try { await pc.addIceCandidate(new RTCIceCandidate(candidate)); }
-            catch (err) { console.error('[WebRTC] Add ICE candidate error:', err); }
-        }
+        if (pc) { try { await pc.addIceCandidate(new RTCIceCandidate(candidate)); } catch (err) {} }
     }
     
     closeConnection(targetClientId) {
         const pc = this.peerConnections.get(targetClientId);
         if (pc) {
-            try {
-                pc.getSenders().forEach(sender => { if (sender.track) sender.track.stop(); });
-                pc.close();
-            } catch (e) { console.error('[WebRTC] Close connection error:', e); }
+            try { pc.getSenders().forEach(s => { if (s.track) s.track.stop(); }); pc.close(); } catch (e) {}
             this.peerConnections.delete(targetClientId);
         }
         if (this.onRemoteStreamRemoved) this.onRemoteStreamRemoved(targetClientId);
     }
     
     closeAllConnections() {
-        this.peerConnections.forEach((pc, clientId) => {
-            try { pc.getSenders().forEach(sender => { if (sender.track) sender.track.stop(); }); pc.close(); }
-            catch (e) { console.error('[WebRTC] Close all error:', e); }
+        this.peerConnections.forEach((pc) => {
+            try { pc.getSenders().forEach(s => { if (s.track) s.track.stop(); }); pc.close(); } catch (e) {}
         });
         this.peerConnections.clear();
     }
     
-    _createPeerConnection(targetClientId) {
-        const existing = this.peerConnections.get(targetClientId);
-        if (existing) existing.close();
-        
-        const pc = new RTCPeerConnection({ iceServers: CONFIG.ICE_SERVERS, iceCandidatePoolSize: 10 });
-        this.peerConnections.set(targetClientId, pc);
-        
+    _setupPeerConnection(pc, targetClientId) {
         pc.onicecandidate = (event) => {
             if (event.candidate && window.app && window.app.sendIceCandidate) {
                 window.app.sendIceCandidate(targetClientId, event.candidate);
             }
         };
-        
         pc.onconnectionstatechange = () => {
-            console.log(`[WebRTC] Connection state with ${targetClientId}:`, pc.connectionState);
+            console.log(`[WebRTC] Connection with ${targetClientId}:`, pc.connectionState);
             if (pc.connectionState === 'failed' || pc.connectionState === 'closed') {
                 this.closeConnection(targetClientId);
             }
         };
-        
-        // 修复：ontrack 正确处理远端流，使用 stream 的 oninactive 事件确保流完整
+        // 修复：ontrack 正确处理远端流
         pc.ontrack = (event) => {
-            console.log(`[WebRTC] Remote track from ${targetClientId}:`, event.track.kind, 'streams:', event.streams.length);
-            if (event.streams[0]) {
+            console.log(`[WebRTC] ontrack from ${targetClientId}:`, event.track.kind, 'streams:', event.streams.length);
+            if (event.streams[0] && this.onRemoteStream) {
                 const stream = event.streams[0];
-                // 修复：等待流的所有轨道都添加完毕
-                if (stream.getTracks().length >= 2) {
-                    this._emitRemoteStream(targetClientId, stream);
-                } else {
-                    // 等待第二个轨道
-                    const checkTracks = setInterval(() => {
-                        if (stream.getTracks().length >= 2) {
-                            clearInterval(checkTracks);
-                            this._emitRemoteStream(targetClientId, stream);
-                        }
-                    }, 50);
-                    // 超时保护
-                    setTimeout(() => {
-                        clearInterval(checkTracks);
-                        if (stream.getTracks().length > 0) this._emitRemoteStream(targetClientId, stream);
-                    }, 3000);
-                }
+                // 延迟确保所有轨道都添加
+                setTimeout(() => { if (this.onRemoteStream) this.onRemoteStream(targetClientId, stream); }, 200);
             }
         };
-        
-        // 修复：确保已有轨道被添加
-        if (this.localStream) {
-            this.localStream.getTracks().forEach(track => { pc.addTrack(track, this.localStream); });
-        }
-        
-        return pc;
     }
     
-    _emitRemoteStream(clientId, stream) {
-        if (this.onRemoteStream) this.onRemoteStream(clientId, stream);
-    }
-    
-    // 修复：编码偏好 - 移动端使用 H264，桌面端 VP9 优先但保留 H264 回退
     _setCodecPreference(pc) {
         try {
             const transceivers = pc.getTransceivers();
             const videoTransceiver = transceivers.find(t => t.sender.track && t.sender.track.kind === 'video');
             if (!videoTransceiver) return;
-            
-            const capabilities = RTCRtpSender.getCapabilities('video');
-            if (!capabilities) return;
+            const caps = RTCRtpSender.getCapabilities('video');
+            if (!caps) return;
             
             if (this.isMobile) {
-                // 移动端：H264 优先
-                const h264 = capabilities.codecs.find(c => c.mimeType === 'video/H264');
+                const h264 = caps.codecs.find(c => c.mimeType === 'video/H264');
                 if (h264) videoTransceiver.setCodecPreferences([h264]);
             } else {
-                // 桌面端：H264 优先（兼容性更好），VP9 次之
-                const h264 = capabilities.codecs.find(c => c.mimeType === 'video/H264');
-                const vp9 = capabilities.codecs.find(c => c.mimeType === 'video/VP9');
-                const vp8 = capabilities.codecs.find(c => c.mimeType === 'video/VP8');
-                const prefs = [h264, vp9, vp8].filter(Boolean);
-                if (prefs.length > 0) videoTransceiver.setCodecPreferences(prefs);
+                const h264 = caps.codecs.find(c => c.mimeType === 'video/H264');
+                const vp9 = caps.codecs.find(c => c.mimeType === 'video/VP9');
+                const vp8 = caps.codecs.find(c => c.mimeType === 'video/VP8');
+                videoTransceiver.setCodecPreferences([h264, vp9, vp8].filter(Boolean));
             }
-        } catch (err) { console.warn('[WebRTC] Set codec preference error:', err); }
+        } catch (err) {}
     }
     
     async enumerateDevices() {
@@ -273,18 +210,16 @@ class WebRTCManager {
         try {
             const devices = await navigator.mediaDevices.enumerateDevices();
             return {
-                audioInputs: devices.filter(d => d.kind === 'audioinput').map(d => ({ id: d.deviceId, label: d.label || `麦克风 ${d.deviceId.slice(0, 8)}` })),
-                videoInputs: devices.filter(d => d.kind === 'videoinput').map(d => ({ id: d.deviceId, label: d.label || `摄像头 ${d.deviceId.slice(0, 8)}` })),
-                audioOutputs: devices.filter(d => d.kind === 'audiooutput').map(d => ({ id: d.deviceId, label: d.label || `扬声器 ${d.deviceId.slice(0, 8)}` }))
+                audioInputs: devices.filter(d => d.kind === 'audioinput').map(d => ({ id: d.deviceId, label: d.label || `麦克风 ${d.deviceId.slice(0,8)}` })),
+                videoInputs: devices.filter(d => d.kind === 'videoinput').map(d => ({ id: d.deviceId, label: d.label || `摄像头 ${d.deviceId.slice(0,8)}` })),
+                audioOutputs: devices.filter(d => d.kind === 'audiooutput').map(d => ({ id: d.deviceId, label: d.label || `扬声器 ${d.deviceId.slice(0,8)}` }))
             };
-        } catch (err) { return { audioInputs: [], videoInputs: [], audioOutputs: [] }; }
+        } catch (e) { return { audioInputs: [], videoInputs: [], audioOutputs: [] }; }
     }
     
     async setAudioOutput(deviceId) {
-        try {
-            const audioElements = document.querySelectorAll('video, audio');
-            for (const el of audioElements) { if (el.setSinkId) await el.setSinkId(deviceId); }
-        } catch (err) { throw err; }
+        try { document.querySelectorAll('video, audio').forEach(el => { if (el.setSinkId) el.setSinkId(deviceId); }); }
+        catch (err) { throw err; }
     }
     
     disableAudio() {
@@ -336,19 +271,15 @@ class WebRTCManager {
             const track = stream.getAudioTracks()[0];
             track.enabled = this.isMicOn;
             this.localStream.addTrack(track);
-            this.peerConnections.forEach(pc => {
-                const sender = pc.getSenders().find(s => s.track && s.track.kind === 'audio');
-                if (sender) sender.replaceTrack(track);
-            });
+            this.peerConnections.forEach(pc => { const s = pc.getSenders().find(s => s.track && s.track.kind === 'audio'); if (s) s.replaceTrack(track); });
         } catch (err) { throw err; }
     }
     
     async setVideoDevice(deviceId) {
         if (!this.localStream) return;
         try {
-            const oldTracks = this.localStream.getVideoTracks();
-            oldTracks.forEach(t => t.stop());
-            oldTracks.forEach(t => this.localStream.removeTrack(t));
+            this.localStream.getVideoTracks().forEach(t => t.stop());
+            this.localStream.getVideoTracks().forEach(t => this.localStream.removeTrack(t));
             const constraints = { video: { deviceId: { exact: deviceId } } };
             if (this.isMobile) { constraints.video.width = CONFIG.WEBRTC_MOBILE_VIDEO.width; constraints.video.height = CONFIG.WEBRTC_MOBILE_VIDEO.height; }
             else { constraints.video.width = CONFIG.WEBRTC_VIDEO.width; constraints.video.height = CONFIG.WEBRTC_VIDEO.height; constraints.video.frameRate = CONFIG.WEBRTC_VIDEO.frameRate; }
@@ -356,15 +287,10 @@ class WebRTCManager {
             const track = stream.getVideoTracks()[0];
             track.enabled = this.isCameraOn;
             this.localStream.addTrack(track);
-            this.peerConnections.forEach(pc => {
-                const sender = pc.getSenders().find(s => s.track && s.track.kind === 'video');
-                if (sender) sender.replaceTrack(track);
-            });
+            this.peerConnections.forEach(pc => { const s = pc.getSenders().find(s => s.track && s.track.kind === 'video'); if (s) s.replaceTrack(track); });
             if (this.onLocalStreamReady) this.onLocalStreamReady(this.localStream);
         } catch (err) { throw err; }
     }
-    
-    getStatus() { return { micOn: this.isMicOn, cameraOn: this.isCameraOn, peerCount: this.peerConnections.size }; }
 }
 
 const webrtcManager = new WebRTCManager();

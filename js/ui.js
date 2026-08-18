@@ -285,6 +285,14 @@ class UIManager {
      * @param {boolean} isAdmin - 当前用户是否为管理员
      */
     updateMemberList(members, myId, isAdmin) {
+        // 修复：保存当前活跃的视频流，避免重渲染后丢失
+        const activeVideos = new Map();
+        if (this._activeVideos) {
+            for (const [clientId, data] of this._activeVideos.entries()) {
+                activeVideos.set(clientId, data);
+            }
+        }
+        
         this.elements.memberList.innerHTML = '';
         
         members.forEach(member => {
@@ -332,6 +340,15 @@ class UIManager {
             
             this.elements.memberList.appendChild(div);
         });
+        
+        // 修复：重渲染后恢复视频流
+        if (activeVideos.size > 0) {
+            setTimeout(() => {
+                for (const [clientId, data] of activeVideos.entries()) {
+                    this.updateMemberVideo(clientId, data.stream, data.name, data.muted);
+                }
+            }, 50);
+        }
     }
     
     /**
@@ -397,33 +414,30 @@ class UIManager {
      * @param {boolean} muted - 是否静音
      */
     updateMemberVideo(clientId, stream, name, muted = false) {
+        // 修复：保存视频状态，防止重渲染后丢失
+        if (!this._activeVideos) this._activeVideos = new Map();
+        this._activeVideos.set(clientId, { stream, name, muted });
+        
         const memberItem = document.querySelector(`.member-item[data-member-id="${clientId}"]`);
         if (!memberItem) return;
         
-        // 查找或创建视频容器
         let videoContainer = memberItem.querySelector('.member-video');
         if (!videoContainer) {
             videoContainer = document.createElement('div');
             videoContainer.className = 'member-video';
-            
             const video = document.createElement('video');
             video.autoplay = true;
             video.playsInline = true;
             video.muted = false;
-            
             const label = document.createElement('div');
             label.className = 'member-video-label';
-            label.textContent = muted ? '🔇 ' + name : name;
-            
             videoContainer.appendChild(video);
             videoContainer.appendChild(label);
             memberItem.appendChild(videoContainer);
         }
         
         const video = videoContainer.querySelector('video');
-        if (video.srcObject !== stream) {
-            video.srcObject = stream;
-        }
+        if (video.srcObject !== stream) video.srcObject = stream;
         
         const label = videoContainer.querySelector('.member-video-label');
         label.textContent = muted ? '🔇 ' + name : name;
@@ -435,6 +449,9 @@ class UIManager {
      * @param {string} clientId - 客户端 ID
      */
     removeMemberVideo(clientId) {
+        // 修复：清除视频状态
+        if (this._activeVideos) this._activeVideos.delete(clientId);
+        
         const memberItem = document.querySelector(`.member-item[data-member-id="${clientId}"]`);
         if (!memberItem) return;
         
