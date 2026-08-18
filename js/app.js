@@ -136,6 +136,9 @@ class App {
             // 连接 MQTT
             await mqttManager.connect(this.roomId);
             
+            // 初始化本地媒体（在等待审批时就获取摄像头/麦克风权限）
+            await this._initLocalMedia();
+            
             // 发送加入请求
             mqttManager.publish({
                 type: CONFIG.MSG_TYPE.JOIN_REQUEST,
@@ -509,6 +512,9 @@ class App {
         uiManager.showToast(`${msg.name} 加入了房间`, 'info');
         
         // Mesh 拓扑：为新成员创建 WebRTC offer（双向连接）
+        // 管理员已经在 _handleRequest 中创建过 offer，跳过避免重复
+        if (this.isAdmin) return;
+        
         if (this.isInRoom && this.hasInitMedia && webrtcManager.localStream) {
             this._createOfferForUser(msg.userId);
         }
