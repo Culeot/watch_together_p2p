@@ -1,5 +1,5 @@
-# GitHub Actions 自动部署到 GitHub Pages
-# 触发条件：push 到 main 分支
+# GitHub Actions ????? GitHub Pages
+# ????:push ? main ??
 
 name: Deploy to GitHub Pages
 
@@ -7,18 +7,18 @@ on:
   push:
     branches:
       - main
-  workflow_dispatch:  # 也支持手动触发
+  workflow_dispatch:  # ???????
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
     
     steps:
-      # 检出代码
+      # ????
       - name: Checkout
         uses: actions/checkout@v4
       
-      # 部署到 gh-pages 分支
+      # ??? gh-pages ??
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
         with:
@@ -26,4 +26,4 @@ jobs:
           publish_dir: ./frontend
           publish_branch: gh-pages
           force_orphan: true
-          cname: ''  # 如果有自定义域名，填写在这里
+          cname: ''  # ????????,?????

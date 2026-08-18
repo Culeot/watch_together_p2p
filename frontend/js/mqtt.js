@@ -1,6 +1,6 @@
 /**
- * mqtt.js - MQTT 连接管理和消息收发封装
- * 使用公共 EMQX Broker 进行 WebRTC 信令交换
+ * mqtt.js - MQTT ???????????
+ * ???? EMQX Broker ?? WebRTC ????
  */
 
 class MQTTManager {
@@ -15,7 +15,7 @@ class MQTTManager {
     }
     
     /**
-     * 生成随机客户端 ID
+     * ??????? ID
      */
     generateClientId() {
         const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
@@ -27,8 +27,8 @@ class MQTTManager {
     }
     
     /**
-     * 连接到 MQTT Broker
-     * @param {string} roomId - 房间号
+     * ??? MQTT Broker
+     * @param {string} roomId - ???
      * @returns {Promise<void>}
      */
     connect(roomId) {
@@ -55,7 +55,7 @@ class MQTTManager {
                     this.connected = true;
                     console.log('[MQTT] Connected, clientId:', this.clientId);
                     
-                    // 订阅房间主题
+                    // ??????
                     this.client.subscribe(this.topic, { qos: 0 }, (err) => {
                         if (err) {
                             console.error('[MQTT] Subscribe error:', err);
@@ -104,7 +104,7 @@ class MQTTManager {
     }
     
     /**
-     * 断开连接
+     * ????
      */
     disconnect() {
         if (this.client) {
@@ -119,8 +119,8 @@ class MQTTManager {
     }
     
     /**
-     * 发送消息到房间主题
-     * @param {object} message - 消息对象
+     * ?????????
+     * @param {object} message - ????
      */
     publish(message) {
         if (!this.connected || !this.client) {
@@ -143,9 +143,9 @@ class MQTTManager {
     }
     
     /**
-     * 注册消息处理器
-     * @param {string} type - 消息类型
-     * @param {function} handler - 处理函数
+     * ???????
+     * @param {string} type - ????
+     * @param {function} handler - ????
      */
     on(type, handler) {
         if (!this.messageHandlers.has(type)) {
@@ -155,9 +155,9 @@ class MQTTManager {
     }
     
     /**
-     * 移除消息处理器
-     * @param {string} type - 消息类型
-     * @param {function} handler - 处理函数（可选，不传则移除所有）
+     * ???????
+     * @param {string} type - ????
+     * @param {function} handler - ????(??,???????)
      */
     off(type, handler) {
         if (!handler) {
@@ -174,7 +174,7 @@ class MQTTManager {
     }
     
     /**
-     * 处理收到的消息
+     * ???????
      * @private
      */
     _handleMessage(rawMessage) {
@@ -184,12 +184,12 @@ class MQTTManager {
             
             console.log('[MQTT] Received:', type, message);
             
-            // 忽略自己发送的消息
+            // ?????????
             if (message.from === this.clientId) {
                 return;
             }
             
-            // 调用对应类型的处理器
+            // ??????????
             const handlers = this.messageHandlers.get(type);
             if (handlers) {
                 handlers.forEach(handler => {
@@ -201,7 +201,7 @@ class MQTTManager {
                 });
             }
             
-            // 调用通配符处理器
+            // ????????
             const allHandlers = this.messageHandlers.get('*');
             if (allHandlers) {
                 allHandlers.forEach(handler => {
@@ -218,7 +218,7 @@ class MQTTManager {
     }
     
     /**
-     * 通知连接状态变化
+     * ????????
      * @private
      */
     _notifyConnectionChange(connected, reconnecting = false) {
@@ -228,12 +228,12 @@ class MQTTManager {
     }
     
     /**
-     * 获取客户端 ID
+     * ????? ID
      */
     getClientId() {
         return this.clientId;
     }
 }
 
-// 全局 MQTT 实例
+// ?? MQTT ??
 const mqttManager = new MQTTManager();

@@ -1,13 +1,13 @@
 /**
- * config.js - 全局配置
- * 包含 MQTT Broker 地址、STUN 服务器、视频参数等
+ * config.js - ????
+ * ?? MQTT Broker ???STUN ?????????
  */
 
 const CONFIG = {
-    // MQTT over WebSocket 公共 Broker（国内可访问，免费无需注册）
+    // MQTT over WebSocket ?? Broker(?????,??????)
     MQTT_BROKER_URL: 'wss://broker.emqx.io:8084/mqtt',
     
-    // MQTT 连接选项
+    // MQTT ????
     MQTT_OPTIONS: {
         keepalive: 30,
         reconnectPeriod: 3000,
@@ -16,40 +16,40 @@ const CONFIG = {
         rejectUnauthorized: false
     },
     
-    // 主题前缀
+    // ????
     TOPIC_PREFIX: 'watchtogether',
     
-    // 房间最大人数
+    // ??????
     MAX_ROOM_SIZE: 6,
     
-    // 房间号长度
+    // ?????
     ROOM_ID_LENGTH: 6,
     
-    // STUN 服务器（国内可访问）
+    // STUN ???(?????)
     ICE_SERVERS: [
         { urls: 'stun:stun.l.google.com:19302' },
         { urls: 'stun:stun1.l.google.com:19302' },
         { urls: 'stun:stun2.l.google.com:19302' }
     ],
     
-    // 连麦视频参数
+    // ??????
     WEBRTC_VIDEO: {
         width: { ideal: 1280 },
         height: { ideal: 720 },
         frameRate: { ideal: 30, max: 30 }
     },
     
-    // 连麦码率 (bps)
+    // ???? (bps)
     WEBRTC_BITRATE: 1000000, // 1Mbps
     
-    // 移动端连麦降级参数
+    // ?????????
     WEBRTC_MOBILE_VIDEO: {
         width: { ideal: 640 },
         height: { ideal: 360 },
         frameRate: { ideal: 24, max: 30 }
     },
     
-    // 屏幕共享画质档位
+    // ????????
     SCREEN_SHARE_QUALITY: {
         '2k60': {
             label: '2K 60fps',
@@ -85,22 +85,22 @@ const CONFIG = {
         }
     },
     
-    // 默认画质
+    // ????
     DEFAULT_QUALITY: '2k60',
     
-    // 动态降级阈值
+    // ??????
     DYNAMIC_QUALITY: {
-        packetLossThreshold: 5,  // 丢包率超过5%触发降级
-        checkInterval: 3000,     // 每3秒检查一次
-        cooldown: 10000          // 降级后10秒内不再降级
+        packetLossThreshold: 5,  // ?????5%????
+        checkInterval: 3000,     // ?3?????
+        cooldown: 10000          // ???10??????
     },
     
-    // SDP 编码偏好：VP9 > VP8
+    // SDP ????:VP9 > VP8
     SDP_PREFER_VP9: true,
     
-    // 消息类型枚举
+    // ??????
     MSG_TYPE: {
-        // 客户端 -> 管理员
+        // ??? -> ???
         JOIN_REQUEST: 'join-request',
         LEAVE: 'leave',
         WEBRTC_OFFER: 'webRTC-offer',
@@ -110,7 +110,7 @@ const CONFIG = {
         SCREEN_SHARE_STOP: 'screen-share-stop',
         QUALITY_CHANGE: 'quality-change',
         
-        // 管理员 -> 所有客户端
+        // ??? -> ?????
         ROOM_CREATED: 'room-created',
         JOIN_APPROVED: 'join-approved',
         JOIN_REJECTED: 'join-rejected',
