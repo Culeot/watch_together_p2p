@@ -90,20 +90,33 @@ class App {
             uiManager.showSharedScreen(stream, quality);
         };
         
+        // 修复：回声抑制 - 降低扬声器音量
+        this._speakerSuppressed = false;
+        
         // 设置 MQTT 连接状态回调
         mqttManager.onConnectionChange = (connected, reconnecting) => {
             uiManager.updateConnectionStatus(connected, reconnecting);
         };
         
         mqttManager.onDisconnect = () => {
-            // 不要立即标记为离开，等待重连
             console.log('[App] MQTT disconnected, waiting for reconnect...');
         };
         
-        // 检查是否有保存的房间状态，有则自动重连
         this._tryReconnect();
-        
         console.log('[App] Initialized, clientId:', this.clientId);
+    }
+    
+    // 修复：回声抑制 - 当本地麦克风音量高时降低扬声器音量
+    _suppressSpeaker() {
+        if (this._speakerSuppressed) return;
+        this._speakerSuppressed = true;
+        document.querySelectorAll('video').forEach(v => { v.volume = 0.3; });
+    }
+    
+    _restoreSpeaker() {
+        if (!this._speakerSuppressed) return;
+        this._speakerSuppressed = false;
+        document.querySelectorAll('video').forEach(v => { v.volume = 1.0; });
     }
     
     /**
