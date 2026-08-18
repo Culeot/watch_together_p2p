@@ -1323,57 +1323,119 @@ body.mobile .control-btn.screen-share-btn {
         border-left: none;
     }
     
+    /* 手机端隐藏画中画浮窗 — 视频显示在成员列表中 */
     .pip-grid {
-        grid-template-columns: repeat(3, 96px);
-        grid-template-rows: repeat(2, 72px);
-        max-width: 312px;
-        gap: 8px;
+        display: none !important;
     }
     
-    .pip-video {
-        width: 96px;
-        height: 72px;
+    /* 手机端成员列表中的视频样式 */
+    .member-video {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        border-radius: var(--radius-sm);
+        overflow: hidden;
+        background: #000;
+        z-index: 1;
+        animation: fadeSlideIn 0.3s var(--ease-out);
+    }
+    
+    .member-video video {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+    
+    .member-item {
+        min-height: 80px !important;
+    }
+    
+    .member-item .member-video-label {
+        bottom: 6px;
+        left: 6px;
+        padding: 3px 8px;
+        font-size: 11px;
+        max-width: calc(100% - 12px);
     }
     
     .control-bar {
-        gap: 10px;
-        padding: 14px 16px;
+        gap: 12px;
+        padding: 16px 20px;
     }
     
     .control-btn {
-        width: 44px;
-        height: 44px;
-        font-size: 18px;
+        width: 52px;
+        height: 52px;
+        font-size: 22px;
+    }
+    
+    .control-btn .tooltip {
+        bottom: 60px;
+        font-size: 12px;
     }
     
     .room-header {
-        padding: 12px 16px;
+        padding: 14px 18px;
     }
     
     .room-title {
-        font-size: 15px;
+        font-size: 17px;
+    }
+    
+    .room-id-badge {
+        padding: 6px 14px;
+        font-size: 14px;
+    }
+    
+    .room-member-count {
+        font-size: 13px;
     }
     
     .home-container {
-        padding: 36px 28px;
+        padding: 40px 32px;
+    }
+    
+    /* 首页表单加大 */
+    .form-group label {
+        font-size: 15px;
+        margin-bottom: 8px;
+    }
+    
+    .form-group input {
+        padding: 16px 18px;
+        font-size: 17px;
+    }
+    
+    .btn {
+        padding: 16px 28px;
+        font-size: 16px;
+    }
+    
+    .home-logo h1 {
+        font-size: 32px;
+    }
+    
+    .home-logo p {
+        font-size: 15px;
     }
 }
 
 @media (max-width: 480px) {
-    .pip-grid {
-        grid-template-columns: repeat(2, 88px);
-        grid-template-rows: repeat(3, 66px);
-        max-width: 188px;
-    }
-    
-    .pip-video {
-        width: 88px;
-        height: 66px;
-    }
-    
     .home-container {
-        padding: 28px 22px;
+        padding: 32px 24px;
         margin: 12px;
+    }
+    
+    .control-btn {
+        width: 48px;
+        height: 48px;
+        font-size: 20px;
+    }
+    
+    .member-item {
+        min-height: 70px !important;
     }
 }
 
