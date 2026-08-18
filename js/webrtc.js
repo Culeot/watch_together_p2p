@@ -1,29 +1,29 @@
 /**
- * webrtc.js - ?? WebRTC ??
- * ????????????? P2P ??(Mesh ??)
+ * webrtc.js - 连麦 WebRTC 管理
+ * 管理房间内成员之间的音视频 P2P 连接（Mesh 拓扑）
  */
 
 class WebRTCManager {
     constructor() {
         this.peerConnections = new Map(); // targetClientId -> RTCPeerConnection
         this.localStream = null;
-        this.onRemoteStream = null; // ????? (clientId, stream, name)
-        this.onRemoteStreamRemoved = null; // ??????? (clientId)
-        this.onLocalStreamReady = null; // ??????? (stream)
+        this.onRemoteStream = null; // 远程流回调 (clientId, stream, name)
+        this.onRemoteStreamRemoved = null; // 远程流移除回调 (clientId)
+        this.onLocalStreamReady = null; // 本地流就绪回调 (stream)
         this.isMicOn = false;
         this.isCameraOn = false;
         this.isMobile = this.detectMobile();
     }
     
     /**
-     * ????????(?? getDisplayMedia API ??????)
+     * 检测是否为移动端（通过 getDisplayMedia API 是否存在判断）
      */
     detectMobile() {
         return !(navigator.mediaDevices && typeof navigator.mediaDevices.getDisplayMedia === 'function');
     }
     
     /**
-     * ???????(??+??)
+     * 获取本地媒体流（音频+视频）
      * @returns {Promise<MediaStream>}
      */
     async getLocalStream() {
@@ -38,7 +38,7 @@ class WebRTCManager {
         try {
             this.localStream = await navigator.mediaDevices.getUserMedia(constraints);
             
-            // ???????
+            // 默认关闭音视频
             this.localStream.getAudioTracks().forEach(track => {
                 track.enabled = false;
             });
@@ -53,7 +53,7 @@ class WebRTCManager {
             return this.localStream;
         } catch (err) {
             console.error('[WebRTC] getUserMedia error:', err);
-            // ??????
+            // 降级为纯音频
             try {
                 this.localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
                 this.localStream.getAudioTracks().forEach(track => {
@@ -71,8 +71,8 @@ class WebRTCManager {
     }
     
     /**
-     * ??/?????
-     * @returns {boolean} ??????
+     * 开启/关闭麦克风
+     * @returns {boolean} 切换后的状态
      */
     async toggleMic() {
         if (!this.localStream) {
@@ -89,8 +89,8 @@ class WebRTCManager {
     }
     
     /**
-     * ??/?????
-     * @returns {boolean} ??????
+     * 开启/关闭摄像头
+     * @returns {boolean} 切换后的状态
      */
     async toggleCamera() {
         if (!this.localStream) {
@@ -99,14 +99,14 @@ class WebRTCManager {
         
         const videoTracks = this.localStream.getVideoTracks();
         if (videoTracks.length === 0) {
-            // ?????????
+            // 重新获取带视频的流
             try {
                 const newStream = await navigator.mediaDevices.getUserMedia({
                     video: this.isMobile ? CONFIG.WEBRTC_MOBILE_VIDEO : CONFIG.WEBRTC_VIDEO
                 });
                 const newVideoTrack = newStream.getVideoTracks()[0];
                 
-                // ?????????
+                // 替换或添加视频轨道
                 videoTracks.forEach(track => {
                     this.localStream.removeTrack(track);
                     track.stop();
@@ -115,12 +115,12 @@ class WebRTCManager {
                 newVideoTrack.enabled = true;
                 this.isCameraOn = true;
                 
-                // ???????
+                // 通知本地流更新
                 if (this.onLocalStreamReady) {
                     this.onLocalStreamReady(this.localStream);
                 }
                 
-                // ?? app.js ???? peer connection ?????
+                // 通知 app.js 更新所有 peer connection 的视频轨道
                 return this.isCameraOn;
             } catch (err) {
                 console.error('[WebRTC] Toggle camera error:', err);
@@ -137,14 +137,14 @@ class WebRTCManager {
     }
     
     /**
-     * ????????? PeerConnection ??? offer(???)
-     * @param {string} targetClientId - ????? ID
+     * 创建到指定客户端的 PeerConnection 并发送 offer（发起方）
+     * @param {string} targetClientId - 目标客户端 ID
      * @returns {Promise<RTCSessionDescriptionInit>}
      */
     async createOffer(targetClientId) {
         const pc = this._createPeerConnection(targetClientId);
         
-        // ??????
+        // 添加本地轨道
         if (this.localStream) {
             this.localStream.getTracks().forEach(track => {
                 pc.addTrack(track, this.localStream);
@@ -156,7 +156,7 @@ class WebRTCManager {
             });
         }
         
-        // ?? VP9 ??
+        // 设置 VP9 优先
         this._setCodecPreference(pc, 'video');
         
         const offer = await pc.createOffer();
@@ -166,15 +166,15 @@ class WebRTCManager {
     }
     
     /**
-     * ????? offer,?? answer
-     * @param {string} fromClientId - ?? offer ???? ID
+     * 处理收到的 offer，创建 answer
+     * @param {string} fromClientId - 发送 offer 的客户端 ID
      * @param {object} sdp - SDP offer
      * @returns {Promise<RTCSessionDescriptionInit>}
      */
     async handleOffer(fromClientId, sdp) {
         const pc = this._createPeerConnection(fromClientId);
         
-        // ??????
+        // 添加本地轨道
         if (!this.localStream) {
             await this.getLocalStream();
         }
@@ -192,8 +192,8 @@ class WebRTCManager {
     }
     
     /**
-     * ????? answer
-     * @param {string} fromClientId - ?? answer ???? ID
+     * 处理收到的 answer
+     * @param {string} fromClientId - 发送 answer 的客户端 ID
      * @param {object} sdp - SDP answer
      */
     async handleAnswer(fromClientId, sdp) {
@@ -204,8 +204,8 @@ class WebRTCManager {
     }
     
     /**
-     * ????? ICE candidate
-     * @param {string} fromClientId - ?? candidate ???? ID
+     * 处理收到的 ICE candidate
+     * @param {string} fromClientId - 发送 candidate 的客户端 ID
      * @param {object} candidate - ICE candidate
      */
     async handleIceCandidate(fromClientId, candidate) {
@@ -220,8 +220,8 @@ class WebRTCManager {
     }
     
     /**
-     * ??????
-     * @param {string} targetClientId - ????? ID
+     * 关闭指定连接
+     * @param {string} targetClientId - 目标客户端 ID
      */
     closeConnection(targetClientId) {
         const pc = this.peerConnections.get(targetClientId);
@@ -245,7 +245,7 @@ class WebRTCManager {
     }
     
     /**
-     * ??????
+     * 关闭所有连接
      */
     closeAllConnections() {
         this.peerConnections.forEach((pc, clientId) => {
@@ -264,11 +264,11 @@ class WebRTCManager {
     }
     
     /**
-     * ?? RTCPeerConnection
+     * 创建 RTCPeerConnection
      * @private
      */
     _createPeerConnection(targetClientId) {
-        // ?????,???
+        // 如果已存在，先关闭
         const existing = this.peerConnections.get(targetClientId);
         if (existing) {
             existing.close();
@@ -281,7 +281,7 @@ class WebRTCManager {
         
         this.peerConnections.set(targetClientId, pc);
         
-        // ICE candidate ??
+        // ICE candidate 事件
         pc.onicecandidate = (event) => {
             if (event.candidate) {
                 if (window.app && window.app.sendIceCandidate) {
@@ -290,7 +290,7 @@ class WebRTCManager {
             }
         };
         
-        // ??????
+        // 连接状态变化
         pc.onconnectionstatechange = () => {
             console.log(`[WebRTC] Connection state with ${targetClientId}:`, pc.connectionState);
             if (pc.connectionState === 'failed' || pc.connectionState === 'closed') {
@@ -298,11 +298,11 @@ class WebRTCManager {
             }
         };
         
-        // ?????
+        // 收到远程流
         pc.ontrack = (event) => {
             console.log(`[WebRTC] Remote track from ${targetClientId}:`, event.track.kind);
             if (this.onRemoteStream && event.streams[0]) {
-                // ????,????????????
+                // 延迟回调，确保所有轨道都添加到流中
                 setTimeout(() => {
                     if (this.onRemoteStream && event.streams[0]) {
                         this.onRemoteStream(targetClientId, event.streams[0]);
@@ -311,7 +311,7 @@ class WebRTCManager {
             }
         };
         
-        // ??????
+        // 添加已有轨道
         if (this.localStream) {
             this.localStream.getTracks().forEach(track => {
                 pc.addTrack(track, this.localStream);
@@ -322,7 +322,7 @@ class WebRTCManager {
     }
     
     /**
-     * ??????(VP9 > VP8)
+     * 设置编码偏好（VP9 > VP8）
      * @private
      */
     _setCodecPreference(pc, kind) {
@@ -351,26 +351,26 @@ class WebRTCManager {
     }
     
     /**
-     * ???????????
+     * 枚举所有音视频输入设备
      * @returns {Promise<{audioInputs: Array, videoInputs: Array}>}
      */
     async enumerateDevices() {
         try {
-            // ?????,???? label ??
+            // 先请求权限，否则设备 label 为空
             await navigator.mediaDevices.getUserMedia({ audio: true, video: true }).then(s => s.getTracks().forEach(t => t.stop()));
         } catch (e) {
-            // ?????,??????
+            // 权限被拒绝，继续尝试枚举
         }
         
         try {
             const devices = await navigator.mediaDevices.enumerateDevices();
             const audioInputs = devices.filter(d => d.kind === 'audioinput').map(d => ({
                 id: d.deviceId,
-                label: d.label || `??? ${d.deviceId.slice(0, 8)}`
+                label: d.label || `麦克风 ${d.deviceId.slice(0, 8)}`
             }));
             const videoInputs = devices.filter(d => d.kind === 'videoinput').map(d => ({
                 id: d.deviceId,
-                label: d.label || `??? ${d.deviceId.slice(0, 8)}`
+                label: d.label || `摄像头 ${d.deviceId.slice(0, 8)}`
             }));
             return { audioInputs, videoInputs };
         } catch (err) {
@@ -380,28 +380,28 @@ class WebRTCManager {
     }
     
     /**
-     * ????????
-     * @param {string} deviceId - ???? ID
+     * 设置音频输入设备
+     * @param {string} deviceId - 音频设备 ID
      */
     async setAudioDevice(deviceId) {
         if (!this.localStream) return;
         
         try {
-            // ????????
+            // 停止当前音频轨道
             this.localStream.getAudioTracks().forEach(t => t.stop());
             this.localStream.removeTrack(this.localStream.getAudioTracks()[0]);
             
-            // ?????????
+            // 获取新设备的音频流
             const newStream = await navigator.mediaDevices.getUserMedia({
                 audio: { deviceId: { exact: deviceId } }
             });
             const newTrack = newStream.getAudioTracks()[0];
             newTrack.enabled = this.isMicOn;
             
-            // ??????
+            // 添加到本地流
             this.localStream.addTrack(newTrack);
             
-            // ???? PeerConnection ?????
+            // 更新所有 PeerConnection 的音频轨道
             this.peerConnections.forEach(pc => {
                 const sender = pc.getSenders().find(s => s.track && s.track.kind === 'audio');
                 if (sender) {
@@ -417,19 +417,19 @@ class WebRTCManager {
     }
     
     /**
-     * ????????
-     * @param {string} deviceId - ???? ID
+     * 设置视频输入设备
+     * @param {string} deviceId - 视频设备 ID
      */
     async setVideoDevice(deviceId) {
         if (!this.localStream) return;
         
         try {
-            // ????????
+            // 停止当前视频轨道
             const oldVideoTracks = this.localStream.getVideoTracks();
             oldVideoTracks.forEach(t => t.stop());
             oldVideoTracks.forEach(t => this.localStream.removeTrack(t));
             
-            // ?????????
+            // 获取新设备的视频流
             const constraints = {
                 video: { deviceId: { exact: deviceId } }
             };
@@ -446,10 +446,10 @@ class WebRTCManager {
             const newTrack = newStream.getVideoTracks()[0];
             newTrack.enabled = this.isCameraOn;
             
-            // ??????
+            // 添加到本地流
             this.localStream.addTrack(newTrack);
             
-            // ???? PeerConnection ?????
+            // 更新所有 PeerConnection 的视频轨道
             this.peerConnections.forEach(pc => {
                 const sender = pc.getSenders().find(s => s.track && s.track.kind === 'video');
                 if (sender) {
@@ -457,7 +457,7 @@ class WebRTCManager {
                 }
             });
             
-            // ?? UI ??????
+            // 通知 UI 更新本地预览
             if (this.onLocalStreamReady) {
                 this.onLocalStreamReady(this.localStream);
             }
@@ -470,7 +470,7 @@ class WebRTCManager {
     }
     
     /**
-     * ??????
+     * 获取当前状态
      */
     getStatus() {
         return {
@@ -481,5 +481,5 @@ class WebRTCManager {
     }
 }
 
-// ????
+// 全局实例
 const webrtcManager = new WebRTCManager();

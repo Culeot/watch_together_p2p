@@ -1,6 +1,6 @@
 /**
- * screenshare.js - ???? WebRTC ??
- * ??????? P2P ??,?????
+ * screenshare.js - 屏幕共享 WebRTC 管理
+ * 管理屏幕共享的 P2P 连接，独立于连麦
  */
 
 class ScreenShareManager {
@@ -9,17 +9,17 @@ class ScreenShareManager {
         this.screenStream = null;
         this.isSharing = false;
         this.currentQuality = CONFIG.DEFAULT_QUALITY;
-        this.onShareStarted = null; // ??????
-        this.onShareStopped = null; // ??????
-        this.onRemoteScreenStream = null; // ??????? (stream, quality)
-        this.onRemoteScreenStopped = null; // ????????
+        this.onShareStarted = null; // 共享开始回调
+        this.onShareStopped = null; // 共享停止回调
+        this.onRemoteScreenStream = null; // 远程屏幕流回调 (stream, quality)
+        this.onRemoteScreenStopped = null; // 远程屏幕停止回调
         this.statsInterval = null;
         this.lastQualityDowngrade = 0;
     }
     
     /**
-     * ???????
-     * @param {string} quality - ????
+     * 获取屏幕共享流
+     * @param {string} quality - 画质档位
      * @returns {Promise<MediaStream>}
      */
     async getScreenStream(quality = CONFIG.DEFAULT_QUALITY) {
@@ -30,9 +30,9 @@ class ScreenShareManager {
         
         this.currentQuality = quality;
         
-        // ????????????,?????
+        // 尝试用指定约束获取屏幕流，失败则降级
         const constraintsList = [
-            // ??:???? + ?????? + ??
+            // 首选：精确约束 + 表面类型提示 + 音频
             {
                 video: {
                     width: { ideal: settings.width, max: settings.width },
@@ -46,7 +46,7 @@ class ScreenShareManager {
                     sampleRate: 48000
                 }
             },
-            // ?? 1:??????,???
+            // 降级 1：不限表面类型，带音频
             {
                 video: {
                     width: { ideal: settings.width, max: settings.width },
@@ -58,7 +58,7 @@ class ScreenShareManager {
                     noiseSuppression: true
                 }
             },
-            // ?? 2:? ideal + ??
+            // 降级 2：仅 ideal + 音频
             {
                 video: {
                     width: { ideal: settings.width },
@@ -67,7 +67,7 @@ class ScreenShareManager {
                 },
                 audio: true
             },
-            // ?? 3:???? + ??
+            // 降级 3：仅分辨率 + 音频
             {
                 video: {
                     width: { ideal: settings.width },
@@ -75,12 +75,12 @@ class ScreenShareManager {
                 },
                 audio: true
             },
-            // ?? 4:??? + ??
+            // 降级 4：仅视频 + 音频
             {
                 video: true,
                 audio: true
             },
-            // ?? 5:???(???)
+            // 降级 5：仅视频（最宽松）
             {
                 video: true,
                 audio: false
@@ -92,7 +92,7 @@ class ScreenShareManager {
             try {
                 this.screenStream = await navigator.mediaDevices.getDisplayMedia(constraints);
                 
-                // ????,??? applyConstraints ????????
+                // 获取流后，尝试用 applyConstraints 强制应用目标参数
                 const videoTrack = this.screenStream.getVideoTracks()[0];
                 if (videoTrack) {
                     try {
@@ -102,12 +102,12 @@ class ScreenShareManager {
                             frameRate: { ideal: settings.frameRate, max: settings.frameRate }
                         });
                     } catch (e) {
-                        // applyConstraints ???????,??
+                        // applyConstraints 失败不影响共享，忽略
                         console.warn('[ScreenShare] applyConstraints failed:', e.message);
                     }
                 }
                 
-                // ??????(?????????????)
+                // 监听共享停止（用户点击浏览器停止共享按钮）
                 this.screenStream.getVideoTracks()[0].onended = () => {
                     this.stopSharing();
                 };
@@ -116,19 +116,19 @@ class ScreenShareManager {
             } catch (err) {
                 lastErr = err;
                 console.warn('[ScreenShare] getDisplayMedia failed with constraints:', JSON.stringify(constraints), err.message);
-                // ?????????
+                // 继续尝试下一个约束
             }
         }
         
-        // ???????
+        // 所有约束都失败
         console.error('[ScreenShare] All getDisplayMedia attempts failed:', lastErr);
-        throw lastErr || new Error('?????????');
+        throw lastErr || new Error('无法获取屏幕共享流');
     }
     
     /**
-     * ??????
-     * @param {string} quality - ????
-     * @param {string[]} memberIds - ???????? ID ??
+     * 开始屏幕共享
+     * @param {string} quality - 画质档位
+     * @param {string[]} memberIds - 需要发送的客户端 ID 列表
      */
     async startSharing(quality, memberIds) {
         if (this.isSharing) {
@@ -139,10 +139,10 @@ class ScreenShareManager {
             await this.getScreenStream(quality);
             this.isSharing = true;
             
-            // ????
+            // 设置码率
             this._applyBitrate(quality);
             
-            // ????????
+            // 开始监控网络质量
             this._startQualityMonitor();
             
             if (this.onShareStarted) {
@@ -158,15 +158,15 @@ class ScreenShareManager {
     }
     
     /**
-     * ??????
+     * 停止屏幕共享
      */
     async stopSharing() {
         this.isSharing = false;
         
-        // ??????
+        // 停止质量监控
         this._stopQualityMonitor();
         
-        // ????????
+        // 关闭所有共享连接
         this.peerConnections.forEach((pc, clientId) => {
             try {
                 pc.getSenders().forEach(sender => {
@@ -181,7 +181,7 @@ class ScreenShareManager {
         });
         this.peerConnections.clear();
         
-        // ?????
+        // 停止屏幕流
         if (this.screenStream) {
             this.screenStream.getTracks().forEach(track => track.stop());
             this.screenStream = null;
@@ -193,8 +193,8 @@ class ScreenShareManager {
     }
     
     /**
-     * ????
-     * @param {string} newQuality - ?????
+     * 切换画质
+     * @param {string} newQuality - 新画质档位
      */
     async changeQuality(newQuality) {
         if (!this.isSharing || !this.screenStream) {
@@ -206,7 +206,7 @@ class ScreenShareManager {
         const settings = CONFIG.SCREEN_SHARE_QUALITY[newQuality];
         
         try {
-            // ?? applyConstraints ??????/??
+            // 通过 applyConstraints 应用新分辨率/帧率
             const videoTrack = this.screenStream.getVideoTracks()[0];
             if (videoTrack) {
                 try {
@@ -220,7 +220,7 @@ class ScreenShareManager {
                 }
             }
             
-            // ????
+            // 更新码率
             this._applyBitrate(newQuality);
             
             console.log('[ScreenShare] Quality changed to:', newQuality);
@@ -230,10 +230,10 @@ class ScreenShareManager {
     }
     
     /**
-     * ??????? offer
-     * @param {string} fromClientId - ???
+     * 处理收到的共享 offer
+     * @param {string} fromClientId - 发送者
      * @param {object} sdp - SDP offer
-     * @param {string} quality - ????
+     * @param {string} quality - 画质档位
      * @returns {Promise<RTCSessionDescriptionInit>}
      */
     async handleShareOffer(fromClientId, sdp, quality) {
@@ -251,8 +251,8 @@ class ScreenShareManager {
     }
     
     /**
-     * ??????? answer
-     * @param {string} fromClientId - ???
+     * 处理收到的共享 answer
+     * @param {string} fromClientId - 发送者
      * @param {object} sdp - SDP answer
      */
     async handleShareAnswer(fromClientId, sdp) {
@@ -263,8 +263,8 @@ class ScreenShareManager {
     }
     
     /**
-     * ???? ICE candidate
-     * @param {string} fromClientId - ???
+     * 处理共享 ICE candidate
+     * @param {string} fromClientId - 发送者
      * @param {object} candidate - ICE candidate
      */
     async handleShareIceCandidate(fromClientId, candidate) {
@@ -279,10 +279,10 @@ class ScreenShareManager {
     }
     
     /**
-     * ???????
-     * @param {string} fromClientId - ??? ID
-     * @param {MediaStream} stream - ???
-     * @param {string} quality - ????
+     * 收到远程屏幕流
+     * @param {string} fromClientId - 共享者 ID
+     * @param {MediaStream} stream - 媒体流
+     * @param {string} quality - 画质档位
      */
     onRemoteScreenReceived(fromClientId, stream, quality) {
         if (this.onRemoteScreenStream) {
@@ -291,8 +291,8 @@ class ScreenShareManager {
     }
     
     /**
-     * ??????
-     * @param {string} clientId - ??? ID
+     * 关闭指定连接
+     * @param {string} clientId - 客户端 ID
      */
     closeConnection(clientId) {
         const pc = this.peerConnections.get(clientId);
@@ -312,20 +312,20 @@ class ScreenShareManager {
     }
     
     /**
-     * ???? PeerConnection(????)
+     * 创建共享 PeerConnection（共享者端）
      * @private
      */
     async _createShareConnection(targetClientId, quality) {
         const pc = this._createSharePeerConnection(targetClientId);
         
-        // ????????
+        // 添加屏幕视频轨道
         if (this.screenStream) {
             this.screenStream.getTracks().forEach(track => {
                 pc.addTrack(track, this.screenStream);
             });
         }
         
-        // ?? VP9 ??
+        // 设置 VP9 优先
         this._setShareCodecPreference(pc);
         
         const offer = await pc.createOffer();
@@ -335,9 +335,9 @@ class ScreenShareManager {
     }
     
     /**
-     * ???? offer(? app.js ??)
-     * @param {string} targetClientId - ????? ID
-     * @param {string} quality - ????
+     * 创建共享 offer（供 app.js 调用）
+     * @param {string} targetClientId - 目标客户端 ID
+     * @param {string} quality - 画质档位
      * @returns {Promise<RTCSessionDescriptionInit>}
      */
     async createShareOffer(targetClientId, quality) {
@@ -345,7 +345,7 @@ class ScreenShareManager {
     }
     
     /**
-     * ???? PeerConnection(???)
+     * 创建共享 PeerConnection（接收端）
      * @private
      */
     _createSharePeerConnection(targetClientId) {
@@ -387,7 +387,7 @@ class ScreenShareManager {
     }
     
     /**
-     * ????????
+     * 设置共享编码偏好
      * @private
      */
     _setShareCodecPreference(pc) {
@@ -412,7 +412,7 @@ class ScreenShareManager {
     }
     
     /**
-     * ??????
+     * 应用码率限制
      * @private
      */
     _applyBitrate(quality) {
@@ -437,7 +437,7 @@ class ScreenShareManager {
     }
     
     /**
-     * ????????
+     * 开始网络质量监控
      * @private
      */
     _startQualityMonitor() {
@@ -464,19 +464,19 @@ class ScreenShareManager {
                     const totalPackets = packetsSent + packetsLost;
                     const lossRate = totalPackets > 0 ? (packetsLost / totalPackets) * 100 : 0;
                     
-                    // ?????,????
+                    // 丢包率过高，触发降级
                     if (lossRate > CONFIG.DYNAMIC_QUALITY.packetLossThreshold && packetsSent > 100) {
                         this._downgradeQuality();
                     }
                 } catch (err) {
-                    // ??????
+                    // 忽略统计错误
                 }
             });
         }, CONFIG.DYNAMIC_QUALITY.checkInterval);
     }
     
     /**
-     * ??????
+     * 停止质量监控
      * @private
      */
     _stopQualityMonitor() {
@@ -487,7 +487,7 @@ class ScreenShareManager {
     }
     
     /**
-     * ????
+     * 降级画质
      * @private
      */
     async _downgradeQuality() {
@@ -504,7 +504,7 @@ class ScreenShareManager {
             this.lastQualityDowngrade = now;
             await this.changeQuality(newQuality);
             
-            // ?? app.js ??????
+            // 通知 app.js 广播画质变化
             if (window.app && window.app.onQualityDowngraded) {
                 window.app.onQualityDowngraded(newQuality);
             }
@@ -514,7 +514,7 @@ class ScreenShareManager {
     }
     
     /**
-     * ????????
+     * 获取当前共享状态
      */
     getStatus() {
         return {
@@ -525,5 +525,5 @@ class ScreenShareManager {
     }
 }
 
-// ????
+// 全局实例
 const screenShareManager = new ScreenShareManager();
