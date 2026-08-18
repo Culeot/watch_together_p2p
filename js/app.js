@@ -24,14 +24,19 @@ class App {
      * 保存房间状态到 localStorage
      */
     _saveState() {
-        const state = {
-            roomId: this.roomId,
-            nickname: this.nickname,
-            clientId: this.clientId,
-            isAdmin: this.isAdmin,
-            isPC: this.isPC
-        };
-        localStorage.setItem('watchtogether_room', JSON.stringify(state));
+        try {
+            const state = {
+                roomId: this.roomId,
+                nickname: this.nickname,
+                clientId: this.clientId,
+                isAdmin: this.isAdmin,
+                isPC: this.isPC
+            };
+            localStorage.setItem('watchtogether_room', JSON.stringify(state));
+            console.log('[App] State saved:', state);
+        } catch (e) {
+            console.error('[App] Save state failed:', e);
+        }
     }
     
     /**
