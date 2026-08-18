@@ -32,8 +32,22 @@ class WebRTCManager {
         }
         
         const constraints = this.isMobile
-            ? { audio: true, video: CONFIG.WEBRTC_MOBILE_VIDEO }
-            : { audio: true, video: CONFIG.WEBRTC_VIDEO };
+            ? { 
+                audio: { 
+                    echoCancellation: true, 
+                    noiseSuppression: true, 
+                    autoGainControl: true 
+                }, 
+                video: CONFIG.WEBRTC_MOBILE_VIDEO 
+              }
+            : { 
+                audio: { 
+                    echoCancellation: true, 
+                    noiseSuppression: true, 
+                    autoGainControl: true 
+                }, 
+                video: CONFIG.WEBRTC_VIDEO 
+              };
         
         try {
             this.localStream = await navigator.mediaDevices.getUserMedia(constraints);
@@ -79,9 +93,15 @@ class WebRTCManager {
             await this.getLocalStream();
         }
         
+        // 如果当前没有音频轨道，先重新获取
         const audioTracks = this.localStream.getAudioTracks();
+        if (audioTracks.length === 0) {
+            await this.enableAudio();
+        }
+        
+        const tracks = this.localStream.getAudioTracks();
         this.isMicOn = !this.isMicOn;
-        audioTracks.forEach(track => {
+        tracks.forEach(track => {
             track.enabled = this.isMicOn;
         });
         
@@ -97,39 +117,15 @@ class WebRTCManager {
             await this.getLocalStream();
         }
         
+        // 如果当前没有视频轨道，先重新获取
         const videoTracks = this.localStream.getVideoTracks();
         if (videoTracks.length === 0) {
-            // 重新获取带视频的流
-            try {
-                const newStream = await navigator.mediaDevices.getUserMedia({
-                    video: this.isMobile ? CONFIG.WEBRTC_MOBILE_VIDEO : CONFIG.WEBRTC_VIDEO
-                });
-                const newVideoTrack = newStream.getVideoTracks()[0];
-                
-                // 替换或添加视频轨道
-                videoTracks.forEach(track => {
-                    this.localStream.removeTrack(track);
-                    track.stop();
-                });
-                this.localStream.addTrack(newVideoTrack);
-                newVideoTrack.enabled = true;
-                this.isCameraOn = true;
-                
-                // 通知本地流更新
-                if (this.onLocalStreamReady) {
-                    this.onLocalStreamReady(this.localStream);
-                }
-                
-                // 通知 app.js 更新所有 peer connection 的视频轨道
-                return this.isCameraOn;
-            } catch (err) {
-                console.error('[WebRTC] Toggle camera error:', err);
-                return this.isCameraOn;
-            }
+            await this.enableVideo();
         }
         
+        const tracks = this.localStream.getVideoTracks();
         this.isCameraOn = !this.isCameraOn;
-        videoTracks.forEach(track => {
+        tracks.forEach(track => {
             track.enabled = this.isCameraOn;
         });
         
@@ -438,7 +434,13 @@ class WebRTCManager {
         }
         const hasAudio = this.localStream.getAudioTracks().length > 0;
         if (!hasAudio) {
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            const stream = await navigator.mediaDevices.getUserMedia({ 
+                audio: { 
+                    echoCancellation: true, 
+                    noiseSuppression: true, 
+                    autoGainControl: true 
+                } 
+            });
             const track = stream.getAudioTracks()[0];
             track.enabled = this.isMicOn;
             this.localStream.addTrack(track);

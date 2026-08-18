@@ -701,6 +701,13 @@ class App {
             const memberIds = Array.from(this.members.keys()).filter(id => id !== this.clientId);
             await screenShareManager.startSharing(quality, memberIds);
             
+            // 屏幕共享时自动静音麦克风，防止回声
+            // 如果用户需要说话，可以手动开启（建议使用耳机）
+            if (webrtcManager.isMicOn) {
+                await this.toggleMic();
+                uiManager.showToast('屏幕共享已自动静音麦克风，点击麦克风按钮可开启（建议用耳机）', 'warning', 5000);
+            }
+            
             // 发送共享 offer 给每个成员
             for (const memberId of memberIds) {
                 const offer = await screenShareManager.createShareOffer(memberId, quality);
@@ -726,7 +733,7 @@ class App {
             
             uiManager.showSharedScreen(screenShareManager.screenStream, quality);
             uiManager.updateShareControls(this.isAdmin, true, this.isPC, this.shareRequests, quality);
-            uiManager.showToast('屏幕共享已开始', 'success');
+            uiManager.showToast('屏幕共享已开始（游戏声音已共享）', 'success');
             
         } catch (err) {
             console.error('[App] Start direct share error:', err);
@@ -862,6 +869,12 @@ class App {
         try {
             const memberIds = Array.from(this.members.keys()).filter(id => id !== this.clientId);
             await screenShareManager.startSharing(msg.quality, memberIds);
+            
+            // 屏幕共享时自动静音麦克风，防止回声
+            if (webrtcManager.isMicOn) {
+                await this.toggleMic();
+                uiManager.showToast('屏幕共享已自动静音麦克风，点击麦克风按钮可开启（建议用耳机）', 'warning', 5000);
+            }
             
             // 发送共享 offer 给每个成员
             for (const memberId of memberIds) {

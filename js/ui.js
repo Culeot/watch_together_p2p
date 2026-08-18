@@ -625,6 +625,11 @@ class UIManager {
                     return;
                 }
                 try {
+                    // 如果之前关闭了，先重新启用
+                    const hasVideo = webrtcManager.localStream && webrtcManager.localStream.getVideoTracks().length > 0;
+                    if (!hasVideo) {
+                        await webrtcManager.enableVideo();
+                    }
                     await webrtcManager.setVideoDevice(e.target.value);
                     this.showToast('摄像头已切换', 'success');
                 } catch (err) {
@@ -643,6 +648,11 @@ class UIManager {
                     return;
                 }
                 try {
+                    // 如果之前关闭了，先重新启用
+                    const hasAudio = webrtcManager.localStream && webrtcManager.localStream.getAudioTracks().length > 0;
+                    if (!hasAudio) {
+                        await webrtcManager.enableAudio();
+                    }
                     await webrtcManager.setAudioDevice(e.target.value);
                     this.showToast('麦克风已切换', 'success');
                 } catch (err) {
