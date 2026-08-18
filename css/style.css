@@ -1439,6 +1439,65 @@ body.mobile .control-btn.screen-share-btn {
     }
 }
 
+/* 横屏手机 */
+@media (max-width: 900px) and (orientation: landscape) {
+    .room-header {
+        padding: 8px 14px;
+    }
+    
+    .room-title {
+        font-size: 14px;
+    }
+    
+    .room-id-badge {
+        padding: 4px 10px;
+        font-size: 12px;
+    }
+    
+    .control-bar {
+        padding: 8px 16px;
+        gap: 10px;
+    }
+    
+    .control-btn {
+        width: 42px;
+        height: 42px;
+        font-size: 18px;
+    }
+    
+    .main-view {
+        flex: 1;
+    }
+    
+    .main-video-container video {
+        object-fit: contain;
+    }
+    
+    /* 横屏时画中画恢复显示（更小） */
+    .pip-grid {
+        display: grid !important;
+        grid-template-columns: repeat(3, 80px) !important;
+        grid-template-rows: repeat(2, 60px) !important;
+        max-width: 264px !important;
+        bottom: 8px;
+        right: 8px;
+        gap: 4px;
+    }
+    
+    .pip-video {
+        width: 80px !important;
+        height: 60px !important;
+    }
+    
+    .side-panel.mobile-show {
+        position: absolute;
+        inset: 0;
+        width: 280px;
+        z-index: 50;
+        border-left: 1px solid var(--border);
+    }
+}
+
 /* 移动端面板切换按钮 */
 .mobile-panel-toggle {
     display: none;

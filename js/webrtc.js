@@ -351,8 +351,8 @@ class WebRTCManager {
     }
     
     /**
-     * 枚举所有音视频输入设备
-     * @returns {Promise<{audioInputs: Array, videoInputs: Array}>}
+     * 枚举所有音视频输入/输出设备
+     * @returns {Promise<{audioInputs: Array, videoInputs: Array, audioOutputs: Array}>}
      */
     async enumerateDevices() {
         try {
@@ -372,10 +372,107 @@ class WebRTCManager {
                 id: d.deviceId,
                 label: d.label || `摄像头 ${d.deviceId.slice(0, 8)}`
             }));
-            return { audioInputs, videoInputs };
+            const audioOutputs = devices.filter(d => d.kind === 'audiooutput').map(d => ({
+                id: d.deviceId,
+                label: d.label || `扬声器 ${d.deviceId.slice(0, 8)}`
+            }));
+            return { audioInputs, videoInputs, audioOutputs };
         } catch (err) {
             console.error('[WebRTC] enumerateDevices error:', err);
-            return { audioInputs: [], videoInputs: [] };
+            return { audioInputs: [], videoInputs: [], audioOutputs: [] };
+        }
+    }
+    
+    /**
+     * 设置音频输出设备（扬声器）
+     * @param {string} deviceId - 扬声器设备 ID
+     */
+    async setAudioOutput(deviceId) {
+        try {
+            const audioElements = document.querySelectorAll('video, audio');
+            for (const el of audioElements) {
+                if (el.setSinkId) {
+                    await el.setSinkId(deviceId);
+                }
+            }
+            console.log('[WebRTC] Audio output set to:', deviceId);
+        } catch (err) {
+            console.error('[WebRTC] Set audio output error:', err);
+            throw err;
+        }
+    }
+    
+    /**
+     * 关闭音频输入（麦克风）
+     */
+    disableAudio() {
+        if (this.localStream) {
+            this.localStream.getAudioTracks().forEach(t => {
+                t.stop();
+                this.localStream.removeTrack(t);
+            });
+        }
+        this.isMicOn = false;
+    }
+    
+    /**
+     * 关闭视频输入（摄像头）
+     */
+    disableVideo() {
+        if (this.localStream) {
+            this.localStream.getVideoTracks().forEach(t => {
+                t.stop();
+                this.localStream.removeTrack(t);
+            });
+        }
+        this.isCameraOn = false;
+    }
+    
+    /**
+     * 重新启用音频输入
+     */
+    async enableAudio() {
+        if (!this.localStream) {
+            await this.getLocalStream();
+            return;
+        }
+        const hasAudio = this.localStream.getAudioTracks().length > 0;
+        if (!hasAudio) {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            const track = stream.getAudioTracks()[0];
+            track.enabled = this.isMicOn;
+            this.localStream.addTrack(track);
+            this.peerConnections.forEach(pc => {
+                const sender = pc.getSenders().find(s => s.track && s.track.kind === 'audio');
+                if (sender) sender.replaceTrack(track);
+                else pc.addTrack(track, this.localStream);
+            });
+        }
+    }
+    
+    /**
+     * 重新启用视频输入
+     */
+    async enableVideo() {
+        if (!this.localStream) {
+            await this.getLocalStream();
+            return;
+        }
+        const hasVideo = this.localStream.getVideoTracks().length > 0;
+        if (!hasVideo) {
+            const constraints = this.isMobile
+                ? { video: CONFIG.WEBRTC_MOBILE_VIDEO }
+                : { video: CONFIG.WEBRTC_VIDEO };
+            const stream = await navigator.mediaDevices.getUserMedia(constraints);
+            const track = stream.getVideoTracks()[0];
+            track.enabled = this.isCameraOn;
+            this.localStream.addTrack(track);
+            this.peerConnections.forEach(pc => {
+                const sender = pc.getSenders().find(s => s.track && s.track.kind === 'video');
+                if (sender) sender.replaceTrack(track);
+                else pc.addTrack(track, this.localStream);
+            });
+            if (this.onLocalStreamReady) this.onLocalStreamReady(this.localStream);
         }
     }
     

@@ -557,7 +557,7 @@ class UIManager {
     
     /**
      * 渲染设备选择器
-     * @param {Object} devices - {audioInputs, videoInputs}
+     * @param {Object} devices - {audioInputs, videoInputs, audioOutputs}
      */
     renderDeviceSelectors(devices) {
         const container = this.elements.qualityControlContainer.parentElement;
@@ -570,41 +570,60 @@ class UIManager {
         
         deviceSection.innerHTML = '';
         
-        // 摄像头选择
+        // 摄像头选择（带关闭选项）
         const videoSection = document.createElement('div');
         videoSection.className = 'device-group';
+        const videoOptions = devices.videoInputs.length > 0 
+            ? devices.videoInputs.map(d => `<option value="${d.id}">${d.label}</option>`).join('')
+            : '';
         videoSection.innerHTML = `
             <div class="panel-section-title">摄像头</div>
             <select class="device-select" id="video-device-select">
-                ${devices.videoInputs.length > 0 
-                    ? devices.videoInputs.map(d => `<option value="${d.id}">${d.label}</option>`).join('')
-                    : '<option value="">未检测到摄像头</option>'
-                }
+                <option value="off">关闭</option>
+                ${videoOptions}
             </select>
         `;
         deviceSection.appendChild(videoSection);
         
-        // 麦克风选择
+        // 麦克风选择（带关闭选项）
         const audioSection = document.createElement('div');
         audioSection.className = 'device-group';
+        const audioOptions = devices.audioInputs.length > 0 
+            ? devices.audioInputs.map(d => `<option value="${d.id}">${d.label}</option>`).join('')
+            : '';
         audioSection.innerHTML = `
             <div class="panel-section-title">麦克风</div>
             <select class="device-select" id="audio-device-select">
-                ${devices.audioInputs.length > 0 
-                    ? devices.audioInputs.map(d => `<option value="${d.id}">${d.label}</option>`).join('')
-                    : '<option value="">未检测到麦克风</option>'
-                }
+                <option value="off">关闭</option>
+                ${audioOptions}
             </select>
         `;
         deviceSection.appendChild(audioSection);
         
-        // 绑定选择事件
-        const videoSelect = document.getElementById('video-device-select');
-        const audioSelect = document.getElementById('audio-device-select');
+        // 扬声器选择（带关闭选项）
+        const speakerSection = document.createElement('div');
+        speakerSection.className = 'device-group';
+        const speakerOptions = devices.audioOutputs && devices.audioOutputs.length > 0 
+            ? devices.audioOutputs.map(d => `<option value="${d.id}">${d.label}</option>`).join('')
+            : '';
+        speakerSection.innerHTML = `
+            <div class="panel-section-title">扬声器</div>
+            <select class="device-select" id="speaker-device-select">
+                <option value="off">关闭</option>
+                ${speakerOptions}
+            </select>
+        `;
+        deviceSection.appendChild(speakerSection);
         
+        // 绑定摄像头选择事件
+        const videoSelect = document.getElementById('video-device-select');
         if (videoSelect) {
             videoSelect.addEventListener('change', async (e) => {
-                if (!e.target.value) return;
+                if (e.target.value === 'off') {
+                    webrtcManager.disableVideo();
+                    this.showToast('摄像头已关闭', 'info');
+                    return;
+                }
                 try {
                     await webrtcManager.setVideoDevice(e.target.value);
                     this.showToast('摄像头已切换', 'success');
@@ -614,14 +633,38 @@ class UIManager {
             });
         }
         
+        // 绑定麦克风选择事件
+        const audioSelect = document.getElementById('audio-device-select');
         if (audioSelect) {
             audioSelect.addEventListener('change', async (e) => {
-                if (!e.target.value) return;
+                if (e.target.value === 'off') {
+                    webrtcManager.disableAudio();
+                    this.showToast('麦克风已关闭', 'info');
+                    return;
+                }
                 try {
                     await webrtcManager.setAudioDevice(e.target.value);
                     this.showToast('麦克风已切换', 'success');
                 } catch (err) {
                     this.showToast('切换麦克风失败: ' + err.message, 'error');
+                }
+            });
+        }
+        
+        // 绑定扬声器选择事件
+        const speakerSelect = document.getElementById('speaker-device-select');
+        if (speakerSelect) {
+            speakerSelect.addEventListener('change', async (e) => {
+                if (e.target.value === 'off') {
+                    try { await webrtcManager.setAudioOutput(''); } catch {}
+                    this.showToast('扬声器已关闭', 'info');
+                    return;
+                }
+                try {
+                    await webrtcManager.setAudioOutput(e.target.value);
+                    this.showToast('扬声器已切换', 'success');
+                } catch (err) {
+                    this.showToast('切换扬声器失败: ' + err.message, 'error');
                 }
             });
         }
