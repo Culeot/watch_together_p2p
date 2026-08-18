@@ -1,1104 +1,1394 @@
 /**
- * app.js - 主入口，协调各模块
- * 管理房间状态、消息协议处理、管理员逻辑
+ * style.css - WatchTogether ????
+ * ??:??????? + ???? + ????
+ * ??:????(-apple-system...)
  */
 
-class App {
-    constructor() {
-        this.roomId = '';
-        this.nickname = '';
-        this.clientId = '';
-        this.isAdmin = false;
-        this.isPC = !webrtcManager.isMobile;
-        this.members = new Map(); // clientId -> {id, name, isAdmin, isPC, joinedAt}
-        this.shareRequests = []; // 共享请求列表
-        this.currentSharer = null; // 当前共享者 {id, name, quality}
-        this.isInRoom = false;
-        this.hasInitMedia = false;
+/* ========== CSS ?? & ???? ========== */
+*,
+*::before,
+*::after {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+:root {
+    /* ???:???? */
+    --primary: #6366f1;
+    --primary-dark: #4f46e5;
+    --primary-light: #818cf8;
+    --primary-glow: rgba(99, 102, 241, 0.25);
+    
+    /* ??? */
+    --success: #22c55e;
+    --success-glow: rgba(34, 197, 94, 0.2);
+    --warning: #f59e0b;
+    --warning-glow: rgba(245, 158, 11, 0.2);
+    --danger: #ef4444;
+    --danger-glow: rgba(239, 68, 68, 0.2);
+    
+    /* ???:???,??? */
+    --bg-base: #080c14;
+    --bg-surface: #0f1629;
+    --bg-elevated: #161d33;
+    --bg-card: rgba(22, 29, 51, 0.72);
+    --bg-input: rgba(15, 22, 41, 0.85);
+    --bg-glass: rgba(255, 255, 255, 0.04);
+    
+    /* ???:???? */
+    --text-primary: rgba(255, 255, 255, 0.96);
+    --text-secondary: rgba(255, 255, 255, 0.55);
+    --text-tertiary: rgba(255, 255, 255, 0.35);
+    
+    /* ?? */
+    --border: rgba(255, 255, 255, 0.08);
+    --border-hover: rgba(255, 255, 255, 0.14);
+    
+    /* ?? */
+    --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.4);
+    --shadow-md: 0 4px 24px rgba(0, 0, 0, 0.5);
+    --shadow-lg: 0 8px 48px rgba(0, 0, 0, 0.6);
+    --shadow-glow: 0 0 24px var(--primary-glow);
+    
+    /* ?? */
+    --radius: 16px;
+    --radius-sm: 10px;
+    --radius-xs: 6px;
+    
+    /* ?? */
+    --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+    --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+    --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+html, body {
+    width: 100%;
+    height: 100%;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    background: var(--bg-base);
+    color: var(--text-primary);
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+/* ========== ?????? ========== */
+body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    pointer-events: none;
+    opacity: 0.025;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    background-repeat: repeat;
+    background-size: 256px 256px;
+}
+
+/* ========== ??? ========== */
+::-webkit-scrollbar {
+    width: 5px;
+}
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.18);
+}
+
+/* ========== ?? ========== */
+#home-page {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg-base);
+    position: relative;
+    overflow: hidden;
+}
+
+/* ?????? */
+#home-page::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background:
+        radial-gradient(ellipse 80% 60% at 30% 20%, rgba(99, 102, 241, 0.08) 0%, transparent 60%),
+        radial-gradient(ellipse 60% 50% at 70% 80%, rgba(139, 92, 246, 0.06) 0%, transparent 50%),
+        radial-gradient(ellipse 40% 30% at 50% 50%, rgba(59, 130, 246, 0.04) 0%, transparent 40%);
+    pointer-events: none;
+}
+
+/* ??????? */
+#home-page::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image:
+        linear-gradient(rgba(255, 255, 255, 0.015) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.015) 1px, transparent 1px);
+    background-size: 60px 60px;
+    mask-image: radial-gradient(ellipse 70% 70% at 50% 50%, black 20%, transparent 70%);
+    -webkit-mask-image: radial-gradient(ellipse 70% 70% at 50% 50%, black 20%, transparent 70%);
+    pointer-events: none;
+}
+
+.home-container {
+    width: 100%;
+    max-width: 440px;
+    padding: 44px 36px;
+    background: var(--bg-card);
+    backdrop-filter: blur(24px) saturate(1.4);
+    -webkit-backdrop-filter: blur(24px) saturate(1.4);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-lg);
+    margin: 16px;
+    position: relative;
+    z-index: 1;
+}
+
+.home-container::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 1px;
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.08) 0%, transparent 50%, rgba(255, 255, 255, 0.03) 100%);
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
+}
+
+.home-logo {
+    text-align: center;
+    margin-bottom: 36px;
+}
+
+.home-logo h1 {
+    font-size: 30px;
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    background: linear-gradient(135deg, #c7d2fe 0%, #a78bfa 40%, #818cf8 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    line-height: 1.2;
+}
+
+.home-logo p {
+    color: var(--text-secondary);
+    margin-top: 10px;
+    font-size: 14px;
+    letter-spacing: 0.01em;
+}
+
+.form-group {
+    margin-bottom: 22px;
+}
+
+.form-group label {
+    display: block;
+    font-size: 13px;
+    font-weight: 500;
+    margin-bottom: 8px;
+    color: var(--text-secondary);
+    letter-spacing: 0.01em;
+}
+
+.form-group input {
+    width: 100%;
+    padding: 14px 18px;
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    font-size: 16px;
+    outline: none;
+    transition: all 0.25s var(--ease-out);
+}
+
+.form-group input::placeholder {
+    color: var(--text-tertiary);
+}
+
+.form-group input:focus {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px var(--primary-glow), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+/* ========== ???? ========== */
+.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 14px 28px;
+    border: none;
+    border-radius: var(--radius-sm);
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.25s var(--ease-out);
+    outline: none;
+    position: relative;
+    overflow: hidden;
+    letter-spacing: 0.01em;
+}
+
+.btn::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.08) 0%, transparent 50%);
+    pointer-events: none;
+    border-radius: inherit;
+}
+
+.btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    transform: none !important;
+}
+
+.btn-primary {
+    background: linear-gradient(180deg, var(--primary) 0%, var(--primary-dark) 100%);
+    color: white;
+    width: 100%;
+    box-shadow: 0 2px 12px var(--primary-glow), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+.btn-primary:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 20px var(--primary-glow), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+
+.btn-primary:active:not(:disabled) {
+    transform: translateY(0);
+}
+
+.btn-success {
+    background: linear-gradient(180deg, var(--success) 0%, #16a34a 100%);
+    color: white;
+    box-shadow: 0 2px 8px var(--success-glow);
+}
+
+.btn-danger {
+    background: linear-gradient(180deg, var(--danger) 0%, #dc2626 100%);
+    color: white;
+    box-shadow: 0 2px 8px var(--danger-glow);
+}
+
+.btn-warning {
+    background: linear-gradient(180deg, var(--warning) 0%, #d97706 100%);
+    color: #000;
+    box-shadow: 0 2px 8px var(--warning-glow);
+}
+
+.btn-ghost {
+    background: var(--bg-glass);
+    color: var(--text-secondary);
+    border: 1px solid var(--border);
+    backdrop-filter: blur(8px);
+}
+
+.btn-ghost:hover:not(:disabled) {
+    border-color: var(--border-hover);
+    color: var(--text-primary);
+    background: rgba(255, 255, 255, 0.06);
+}
+
+.btn-sm {
+    padding: 8px 16px;
+    font-size: 13px;
+    border-radius: var(--radius-xs);
+}
+
+.btn-block {
+    width: 100%;
+}
+
+/* ========== ??? ========== */
+.home-divider {
+    display: flex;
+    align-items: center;
+    margin: 28px 0;
+    color: var(--text-tertiary);
+    font-size: 12px;
+    letter-spacing: 0.05em;
+}
+
+.home-divider::before,
+.home-divider::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--border), transparent);
+}
+
+.home-divider span {
+    padding: 0 16px;
+}
+
+/* ========== ???? ========== */
+.invite-link-box {
+    display: none;
+    margin-top: 20px;
+    padding: 14px 16px;
+    background: rgba(99, 102, 241, 0.06);
+    border: 1px solid rgba(99, 102, 241, 0.2);
+    border-radius: var(--radius-sm);
+    animation: fadeSlideIn 0.35s var(--ease-out);
+}
+
+.invite-link-box.show {
+    display: block;
+}
+
+.invite-link-box .link-text {
+    font-size: 12.5px;
+    color: var(--text-secondary);
+    margin-bottom: 10px;
+    word-break: break-all;
+    font-family: 'SF Mono', 'Cascadia Code', 'Consolas', monospace;
+    line-height: 1.5;
+}
+
+.invite-link-box .copy-btn {
+    width: 100%;
+}
+
+@keyframes fadeSlideIn {
+    from {
+        opacity: 0;
+        transform: translateY(8px);
     }
-    
-    /**
-     * 初始化应用
-     */
-    init() {
-        uiManager.init();
-        this.clientId = mqttManager.getClientId();
-        
-        // 设置 MQTT 消息处理器
-        this._setupMessageHandlers();
-        
-        // 设置 WebRTC 远程流回调
-        webrtcManager.onRemoteStream = (clientId, stream) => {
-            const member = this.members.get(clientId);
-            const name = member ? member.name : '未知';
-            const audioTracks = stream.getAudioTracks();
-            const isMuted = audioTracks.length === 0 || !audioTracks[0].enabled;
-            uiManager.addPipVideo(clientId, stream, name, false, isMuted);
-        };
-        
-        webrtcManager.onRemoteStreamRemoved = (clientId) => {
-            uiManager.removePipVideo(clientId);
-        };
-        
-        // 设置屏幕共享远程流回调
-        screenShareManager.onRemoteScreenStream = (stream, quality) => {
-            uiManager.showSharedScreen(stream, quality);
-        };
-        
-        // 设置 MQTT 连接状态回调
-        mqttManager.onConnectionChange = (connected, reconnecting) => {
-            uiManager.updateConnectionStatus(connected, reconnecting);
-        };
-        
-        mqttManager.onDisconnect = () => {
-            if (this.isInRoom) {
-                if (this.isAdmin) {
-                    // 管理员断开，房间解散
-                    this._broadcastAdminLeft();
-                } else {
-                    uiManager.showToast('与房间断开连接', 'error');
-                }
-            }
-        };
-        
-        console.log('[App] Initialized, clientId:', this.clientId);
-    }
-    
-    /**
-     * 创建房间
-     * @param {string} nickname - 用户昵称
-     */
-    async createRoom(nickname) {
-        this.nickname = nickname;
-        this.roomId = this._generateRoomId();
-        this.isAdmin = true;
-        this.isInRoom = true;
-        
-        uiManager.showLoading('正在创建房间...');
-        
-        try {
-            // 连接 MQTT
-            await mqttManager.connect(this.roomId);
-            
-            // 注册自己为成员
-            this.members.set(this.clientId, {
-                id: this.clientId,
-                name: this.nickname,
-                isAdmin: true,
-                isPC: this.isPC,
-                joinedAt: Date.now()
-            });
-            
-            // 广播房间创建消息
-            mqttManager.publish({
-                type: CONFIG.MSG_TYPE.ROOM_CREATED,
-                roomId: this.roomId,
-                adminName: this.nickname
-            });
-            
-            // 初始化本地媒体
-            await this._initLocalMedia();
-            
-            // 切换到会议室页面
-            uiManager.showRoom();
-            uiManager.updateRoomInfo(this.roomId, this.members.size);
-            uiManager.updateMemberList(Array.from(this.members.values()), this.clientId, this.isAdmin);
-            uiManager.showInviteLink(this.roomId);
-            uiManager.updateShareControls(this.isAdmin, false, this.isPC, this.shareRequests, null);
-            
-            uiManager.showToast('房间创建成功！', 'success');
-            
-            // 加载音视频设备列表
-            this._loadDevices();
-            
-        } catch (err) {
-            console.error('[App] Create room error:', err);
-            uiManager.showToast('创建房间失败: ' + err.message, 'error');
-            this._resetState();
-        } finally {
-            uiManager.hideLoading();
-        }
-    }
-    
-    /**
-     * 加入房间
-     * @param {string} roomId - 房间号
-     * @param {string} nickname - 用户昵称
-     */
-    async joinRoom(roomId, nickname) {
-        this.nickname = nickname;
-        this.roomId = roomId.toUpperCase();
-        this.isAdmin = false;
-        
-        uiManager.showLoading('正在加入房间...');
-        
-        try {
-            // 连接 MQTT
-            await mqttManager.connect(this.roomId);
-            
-            // 发送加入请求
-            mqttManager.publish({
-                type: CONFIG.MSG_TYPE.JOIN_REQUEST,
-                name: this.nickname,
-                isPC: this.isPC
-            });
-            
-            uiManager.showRoom();
-            uiManager.showToast('已发送加入请求，等待管理员批准...', 'info');
-            
-        } catch (err) {
-            console.error('[App] Join room error:', err);
-            uiManager.showToast('加入房间失败: ' + err.message, 'error');
-            uiManager.hideLoading();
-        }
-    }
-    
-    /**
-     * 离开房间
-     */
-    async leaveRoom() {
-        if (!this.isInRoom) return;
-        
-        // 发送离开消息
-        mqttManager.publish({
-            type: CONFIG.MSG_TYPE.LEAVE
-        });
-        
-        // 如果是管理员，广播房间解散
-        if (this.isAdmin) {
-            this._broadcastAdminLeft();
-        }
-        
-        // 清理
-        this._cleanup();
-        
-        // 返回首页
-        uiManager.hideRoomClosed();
-        uiManager.showHome();
-        uiManager.hideInviteLink();
-        uiManager.clearAllPips();
-        uiManager.clearSharedScreen();
-    }
-    
-    /**
-     * 设置 MQTT 消息处理器
-     * @private
-     */
-    _setupMessageHandlers() {
-        // 自己成为管理员后收到的消息
-        
-        // 加入请求（仅管理员处理）
-        mqttManager.on(CONFIG.MSG_TYPE.JOIN_REQUEST, (msg) => {
-            if (!this.isAdmin) return;
-            this._handleJoinRequest(msg);
-        });
-        
-        // 离开消息
-        mqttManager.on(CONFIG.MSG_TYPE.LEAVE, (msg) => {
-            this._handleUserLeave(msg.from);
-        });
-        
-        // WebRTC 信令
-        mqttManager.on(CONFIG.MSG_TYPE.WEBRTC_OFFER, (msg) => {
-            if (msg.target !== this.clientId) return;
-            this._handleWebRTCOffer(msg);
-        });
-        
-        mqttManager.on(CONFIG.MSG_TYPE.WEBRTC_ANSWER, (msg) => {
-            if (msg.target !== this.clientId) return;
-            this._handleWebRTCAnswer(msg);
-        });
-        
-        mqttManager.on(CONFIG.MSG_TYPE.WEBRTC_ICE, (msg) => {
-            if (msg.target !== this.clientId) return;
-            this._handleWebRTCIce(msg);
-        });
-        
-        // 屏幕共享 ICE candidate
-        mqttManager.on('webRTC-ice-screen', (msg) => {
-            if (msg.target !== this.clientId) return;
-            this._handleScreenShareIce(msg);
-        });
-        
-        // 屏幕共享 WebRTC 信令
-        mqttManager.on('webRTC-offer-screen', (msg) => {
-            if (msg.target !== this.clientId) return;
-            this._handleScreenShareOffer(msg);
-        });
-        
-        mqttManager.on('webRTC-answer-screen', (msg) => {
-            if (msg.target !== this.clientId) return;
-            this._handleScreenShareAnswer(msg);
-        });
-        
-        // 屏幕共享信令
-        mqttManager.on(CONFIG.MSG_TYPE.SCREEN_SHARE_REQUEST, (msg) => {
-            if (!this.isAdmin) return;
-            this._handleScreenShareRequest(msg);
-        });
-        
-        mqttManager.on(CONFIG.MSG_TYPE.SCREEN_SHARE_APPROVED, (msg) => {
-            if (msg.target !== this.clientId) return;
-            this._handleScreenShareApproved(msg);
-        });
-        
-        mqttManager.on(CONFIG.MSG_TYPE.SCREEN_SHARE_REJECTED, (msg) => {
-            if (msg.target !== this.clientId) return;
-            this._handleScreenShareRejected(msg);
-        });
-        
-        mqttManager.on(CONFIG.MSG_TYPE.SCREEN_SHARE_STARTED, (msg) => {
-            this._handleScreenShareStarted(msg);
-        });
-        
-        mqttManager.on(CONFIG.MSG_TYPE.SCREEN_SHARE_STOP, (msg) => {
-            this._handleScreenShareStop(msg);
-        });
-        
-        mqttManager.on(CONFIG.MSG_TYPE.SCREEN_SHARE_REVOKED, (msg) => {
-            this._handleScreenShareRevoked(msg);
-        });
-        
-        mqttManager.on(CONFIG.MSG_TYPE.QUALITY_CHANGE, (msg) => {
-            this._handleQualityChange(msg);
-        });
-        
-        // 房间管理消息
-        
-        mqttManager.on(CONFIG.MSG_TYPE.ROOM_CREATED, (msg) => {
-            // 非管理员收到房间创建消息（通常忽略，因为已经通过 join-request 流程）
-        });
-        
-        mqttManager.on(CONFIG.MSG_TYPE.JOIN_APPROVED, (msg) => {
-            if (msg.target !== this.clientId) return;
-            this._handleJoinApproved(msg);
-        });
-        
-        mqttManager.on(CONFIG.MSG_TYPE.JOIN_REJECTED, (msg) => {
-            if (msg.target !== this.clientId) return;
-            this._handleJoinRejected(msg);
-        });
-        
-        mqttManager.on(CONFIG.MSG_TYPE.USER_JOINED, (msg) => {
-            this._handleUserJoined(msg);
-        });
-        
-        mqttManager.on(CONFIG.MSG_TYPE.USER_LEFT, (msg) => {
-            this._handleUserLeft(msg.userId);
-        });
-        
-        mqttManager.on(CONFIG.MSG_TYPE.ROOM_FULL, (msg) => {
-            if (msg.target !== this.clientId) return;
-            uiManager.showToast('房间已满', 'error');
-            this._cleanup();
-            uiManager.showHome();
-        });
-        
-        mqttManager.on(CONFIG.MSG_TYPE.KICKED, (msg) => {
-            if (msg.target !== this.clientId) return;
-            uiManager.showToast('你已被管理员移出房间', 'error');
-            this._cleanup();
-            uiManager.showHome();
-        });
-        
-        mqttManager.on(CONFIG.MSG_TYPE.ADMIN_LEFT, (msg) => {
-            if (this.isAdmin) return; // 自己发的，忽略
-            uiManager.showRoomClosed('管理员已离开，房间解散');
-            this._cleanup();
-        });
-        
-        mqttManager.on(CONFIG.MSG_TYPE.ERROR, (msg) => {
-            if (msg.target !== this.clientId) return;
-            uiManager.showToast(msg.message || '发生错误', 'error');
-        });
-        
-        // 断线通知
-        mqttManager.on('disconnect-notify', (msg) => {
-            this._handleUserLeave(msg.from);
-        });
-    }
-    
-    /**
-     * 初始化本地媒体
-     * @private
-     */
-    async _initLocalMedia() {
-        if (this.hasInitMedia) return;
-        
-        try {
-            const stream = await webrtcManager.getLocalStream();
-            // 本地流不显示在画中画（因为默认关闭）
-            this.hasInitMedia = true;
-        } catch (err) {
-            console.warn('[App] Init local media failed:', err);
-            // 媒体初始化失败不阻止进入房间
-        }
-    }
-    
-    /**
-     * 加载音视频设备列表并渲染选择器
-     * @private
-     */
-    async _loadDevices() {
-        try {
-            const devices = await webrtcManager.enumerateDevices();
-            uiManager.renderDeviceSelectors(devices);
-            console.log('[App] Devices loaded:', devices.videoInputs.length, 'cameras,', devices.audioInputs.length, 'mics');
-        } catch (err) {
-            console.warn('[App] Load devices failed:', err);
-        }
-    }
-    
-    /**
-     * 生成随机房间号
-     * @private
-     */
-    _generateRoomId() {
-        const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // 排除易混淆字符
-        let result = '';
-        for (let i = 0; i < CONFIG.ROOM_ID_LENGTH; i++) {
-            result += chars.charAt(Math.floor(Math.random() * chars.length));
-        }
-        return result;
-    }
-    
-    // ========== 消息处理 ==========
-    
-    /**
-     * 处理加入请求（管理员端）
-     * @private
-     */
-    async _handleJoinRequest(msg) {
-        // 检查房间是否已满
-        if (this.members.size >= CONFIG.MAX_ROOM_SIZE) {
-            mqttManager.publish({
-                type: CONFIG.MSG_TYPE.ROOM_FULL,
-                target: msg.from
-            });
-            return;
-        }
-        
-        // 添加新成员
-        this.members.set(msg.from, {
-            id: msg.from,
-            name: msg.name,
-            isAdmin: false,
-            isPC: msg.isPC,
-            joinedAt: Date.now()
-        });
-        
-        // 发送批准消息给新成员
-        mqttManager.publish({
-            type: CONFIG.MSG_TYPE.JOIN_APPROVED,
-            target: msg.from,
-            userId: msg.from,
-            name: msg.name,
-            members: Array.from(this.members.values())
-        });
-        
-        // 广播用户加入消息
-        mqttManager.publish({
-            type: CONFIG.MSG_TYPE.USER_JOINED,
-            userId: msg.from,
-            name: msg.name,
-            isPC: msg.isPC
-        });
-        
-        // 更新 UI
-        uiManager.updateRoomInfo(this.roomId, this.members.size);
-        uiManager.updateMemberList(Array.from(this.members.values()), this.clientId, this.isAdmin);
-        
-        // 为新成员创建 WebRTC offer
-        try {
-            const offer = await webrtcManager.createOffer(msg.from);
-            mqttManager.publish({
-                type: CONFIG.MSG_TYPE.WEBRTC_OFFER,
-                target: msg.from,
-                sdp: offer.sdp
-            });
-        } catch (err) {
-            console.error('[App] Create offer for new member error:', err);
-        }
-    }
-    
-    /**
-     * 处理加入批准
-     * @private
-     */
-    _handleJoinApproved(msg) {
-        this.isInRoom = true;
-        
-        // 注册自己为成员
-        this.members.set(this.clientId, {
-            id: this.clientId,
-            name: this.nickname,
-            isAdmin: false,
-            isPC: this.isPC,
-            joinedAt: Date.now()
-        });
-        
-        // 注册已有成员
-        if (msg.members) {
-            msg.members.forEach(m => {
-                if (m.id !== this.clientId) {
-                    this.members.set(m.id, m);
-                }
-            });
-        }
-        
-        // 更新 UI
-        uiManager.updateRoomInfo(this.roomId, this.members.size);
-        uiManager.updateMemberList(Array.from(this.members.values()), this.clientId, this.isAdmin);
-        uiManager.hideLoading();
-        uiManager.showToast('已加入房间！', 'success');
-        
-        // 加载音视频设备列表
-        this._loadDevices();
-    }
-    
-    /**
-     * 处理加入拒绝
-     * @private
-     */
-    _handleJoinRejected(msg) {
-        uiManager.hideLoading();
-        uiManager.showToast(msg.reason || '加入请求被拒绝', 'error');
-        this._cleanup();
-        uiManager.showHome();
-    }
-    
-    /**
-     * 处理用户加入
-     * @private
-     */
-    _handleUserJoined(msg) {
-        if (msg.userId === this.clientId) return; // 自己
-        
-        this.members.set(msg.userId, {
-            id: msg.userId,
-            name: msg.name,
-            isAdmin: false,
-            isPC: msg.isPC,
-            joinedAt: Date.now()
-        });
-        
-        uiManager.updateRoomInfo(this.roomId, this.members.size);
-        uiManager.updateMemberList(Array.from(this.members.values()), this.clientId, this.isAdmin);
-        uiManager.showToast(`${msg.name} 加入了房间`, 'info');
-    }
-    
-    /**
-     * 处理用户离开
-     * @private
-     */
-    _handleUserLeave(clientId) {
-        const member = this.members.get(clientId);
-        if (!member) return;
-        
-        this.members.delete(clientId);
-        
-        // 关闭与该用户的连接
-        webrtcManager.closeConnection(clientId);
-        screenShareManager.closeConnection(clientId);
-        uiManager.removePipVideo(clientId);
-        
-        // 如果是当前共享者离开
-        if (this.currentSharer && this.currentSharer.id === clientId) {
-            this.currentSharer = null;
-            uiManager.clearSharedScreen();
-            mqttManager.publish({
-                type: CONFIG.MSG_TYPE.SCREEN_SHARE_STOPPED,
-                reason: '共享者离开'
-            });
-        }
-        
-        if (this.isAdmin) {
-            // 广播用户离开
-            mqttManager.publish({
-                type: CONFIG.MSG_TYPE.USER_LEFT,
-                userId: clientId
-            });
-            
-            // 更新 UI
-            uiManager.updateRoomInfo(this.roomId, this.members.size);
-            uiManager.updateMemberList(Array.from(this.members.values()), this.clientId, this.isAdmin);
-        }
-    }
-    
-    /**
-     * 处理 WebRTC offer
-     * @private
-     */
-    async _handleWebRTCOffer(msg) {
-        try {
-            const answer = await webrtcManager.handleOffer(msg.from, msg.sdp);
-            mqttManager.publish({
-                type: CONFIG.MSG_TYPE.WEBRTC_ANSWER,
-                target: msg.from,
-                sdp: answer.sdp
-            });
-        } catch (err) {
-            console.error('[App] Handle offer error:', err);
-        }
-    }
-    
-    /**
-     * 处理 WebRTC answer
-     * @private
-     */
-    async _handleWebRTCAnswer(msg) {
-        try {
-            await webrtcManager.handleAnswer(msg.from, msg.sdp);
-        } catch (err) {
-            console.error('[App] Handle answer error:', err);
-        }
-    }
-    
-    /**
-     * 处理 WebRTC ICE
-     * @private
-     */
-    async _handleWebRTCIce(msg) {
-        try {
-            await webrtcManager.handleIceCandidate(msg.from, msg.candidate);
-        } catch (err) {
-            console.error('[App] Handle ICE error:', err);
-        }
-    }
-    
-    /**
-     * 处理屏幕共享 ICE
-     * @private
-     */
-    async _handleScreenShareIce(msg) {
-        try {
-            await screenShareManager.handleShareIceCandidate(msg.from, msg.candidate);
-        } catch (err) {
-            console.error('[App] Handle screen share ICE error:', err);
-        }
-    }
-    
-    // ========== 媒体控制 ==========
-    
-    /**
-     * 发送 ICE candidate
-     * @param {string} target - 目标客户端 ID
-     * @param {object} candidate - ICE candidate
-     */
-    sendIceCandidate(target, candidate) {
-        mqttManager.publish({
-            type: CONFIG.MSG_TYPE.WEBRTC_ICE,
-            target: target,
-            candidate: candidate
-        });
-    }
-    
-    /**
-     * 切换麦克风
-     */
-    async toggleMic() {
-        try {
-            const isOn = await webrtcManager.toggleMic();
-            uiManager.updateMicButton(isOn);
-        } catch (err) {
-            uiManager.showToast('无法访问麦克风', 'error');
-        }
-    }
-    
-    /**
-     * 切换摄像头
-     */
-    async toggleCamera() {
-        try {
-            const isOn = await webrtcManager.toggleCamera();
-            uiManager.updateCameraButton(isOn);
-            
-            if (isOn) {
-                // 显示本地画中画
-                const stream = webrtcManager.localStream;
-                if (stream) {
-                    uiManager.addPipVideo(this.clientId, stream, this.nickname + ' (我)', true, !webrtcManager.isMicOn);
-                }
-            } else {
-                uiManager.removePipVideo(this.clientId);
-            }
-        } catch (err) {
-            uiManager.showToast('无法访问摄像头', 'error');
-        }
-    }
-    
-    // ========== 屏幕共享 ==========
-    
-    /**
-     * 请求屏幕共享
-     */
-    requestScreenShare() {
-        if (!this.isPC) {
-            uiManager.showToast('屏幕共享仅限 PC 端', 'warning');
-            return;
-        }
-        
-        if (this.currentSharer) {
-            uiManager.showToast('已有用户正在共享屏幕', 'warning');
-            return;
-        }
-        
-        // 弹出画质选择
-        this._showQualitySelectModal((quality) => {
-            if (this.isAdmin) {
-                // 管理员直接开始共享，无需审批
-                this._startDirectShare(quality);
-            } else {
-                // 普通用户发送申请
-                this._sendShareRequest(quality);
-            }
-        });
-    }
-    
-    /**
-     * 管理员直接开始共享（无需审批）
-     * @private
-     */
-    async _startDirectShare(quality) {
-        try {
-            const memberIds = Array.from(this.members.keys()).filter(id => id !== this.clientId);
-            await screenShareManager.startSharing(quality, memberIds);
-            
-            // 发送共享 offer 给每个成员
-            for (const memberId of memberIds) {
-                const offer = await screenShareManager.createShareOffer(memberId, quality);
-                mqttManager.publish({
-                    type: 'webRTC-offer-screen',
-                    target: memberId,
-                    sdp: offer.sdp,
-                    quality: quality
-                });
-            }
-            
-            this.currentSharer = {
-                id: this.clientId,
-                name: this.nickname,
-                quality: quality
-            };
-            
-            mqttManager.publish({
-                type: CONFIG.MSG_TYPE.SCREEN_SHARE_STARTED,
-                name: this.nickname,
-                quality: quality
-            });
-            
-            uiManager.showSharedScreen(screenShareManager.screenStream, quality);
-            uiManager.updateShareControls(this.isAdmin, true, this.isPC, this.shareRequests, quality);
-            uiManager.showToast('屏幕共享已开始', 'success');
-            
-        } catch (err) {
-            console.error('[App] Start direct share error:', err);
-            uiManager.showToast('开始共享失败: ' + err.message, 'error');
-        }
-    }
-    
-    /**
-     * 显示画质选择弹窗
-     * @private
-     */
-    _showQualitySelectModal(callback) {
-        const qualities = Object.entries(CONFIG.SCREEN_SHARE_QUALITY);
-        const body = document.createElement('div');
-        body.innerHTML = '<p style="margin-bottom:12px;color:var(--text-secondary);">选择共享画质：</p>';
-        const options = document.createElement('div');
-        options.className = 'quality-options';
-        
-        qualities.forEach(([key, settings]) => {
-            const option = document.createElement('label');
-            option.className = 'quality-option' + (key === CONFIG.DEFAULT_QUALITY ? ' selected' : '');
-            option.innerHTML = `
-                <input type="radio" name="share-quality" value="${key}" ${key === CONFIG.DEFAULT_QUALITY ? 'checked' : ''}>
-                <div class="radio"></div>
-                <div class="info">
-                    <div class="label">${settings.label}</div>
-                    <div class="desc">${settings.width}×${settings.height} · 目标 ${(settings.targetBitrate / 1000000).toFixed(1)}Mbps</div>
-                </div>
-            `;
-            options.appendChild(option);
-        });
-        
-        body.appendChild(options);
-        
-        uiManager.showModal('选择共享画质', body, [
-            {
-                text: '取消',
-                class: 'btn-ghost',
-                onClick: () => {}
-            },
-            {
-                text: '确认',
-                class: 'btn-primary',
-                onClick: () => {
-                    const selected = document.querySelector('input[name="share-quality"]:checked');
-                    const quality = selected ? selected.value : CONFIG.DEFAULT_QUALITY;
-                    if (callback) callback(quality);
-                }
-            }
-        ]);
-    }
-    
-    /**
-     * 发送共享请求（普通用户）
-     * @private
-     */
-    _sendShareRequest(quality) {
-        mqttManager.publish({
-            type: CONFIG.MSG_TYPE.SCREEN_SHARE_REQUEST,
-            name: this.nickname,
-            quality: quality
-        });
-        
-        uiManager.showToast('已发送共享申请，等待管理员批准...', 'info');
-    }
-    
-    /**
-     * 处理共享请求（管理员端）
-     * @private
-     */
-    _handleScreenShareRequest(msg) {
-        // 检查是否已有共享
-        if (this.currentSharer) {
-            mqttManager.publish({
-                type: CONFIG.MSG_TYPE.SCREEN_SHARE_REJECTED,
-                target: msg.from
-            });
-            return;
-        }
-        
-        // 添加到请求列表
-        this.shareRequests.push({
-            from: msg.from,
-            name: msg.name,
-            quality: msg.quality
-        });
-        
-        // 更新 UI
-        uiManager.updateShareControls(this.isAdmin, !!this.currentSharer, this.isPC, this.shareRequests, this.currentSharer?.quality);
-        
-        uiManager.showToast(`${msg.name} 申请共享屏幕`, 'info');
-    }
-    
-    /**
-     * 批准共享请求
-     * @param {string} userId - 申请者 ID
-     */
-    approveShareRequest(userId) {
-        const request = this.shareRequests.find(r => r.from === userId);
-        if (!request) return;
-        
-        this.shareRequests = this.shareRequests.filter(r => r.from !== userId);
-        
-        mqttManager.publish({
-            type: CONFIG.MSG_TYPE.SCREEN_SHARE_APPROVED,
-            target: userId,
-            quality: request.quality
-        });
-        
-        uiManager.updateShareControls(this.isAdmin, !!this.currentSharer, this.isPC, this.shareRequests, this.currentSharer?.quality);
-    }
-    
-    /**
-     * 拒绝共享请求
-     * @param {string} userId - 申请者 ID
-     */
-    rejectShareRequest(userId) {
-        this.shareRequests = this.shareRequests.filter(r => r.from !== userId);
-        
-        mqttManager.publish({
-            type: CONFIG.MSG_TYPE.SCREEN_SHARE_REJECTED,
-            target: userId
-        });
-        
-        uiManager.updateShareControls(this.isAdmin, !!this.currentSharer, this.isPC, this.shareRequests, this.currentSharer?.quality);
-    }
-    
-    /**
-     * 处理共享批准
-     * @private
-     */
-    async _handleScreenShareApproved(msg) {
-        try {
-            const memberIds = Array.from(this.members.keys()).filter(id => id !== this.clientId);
-            await screenShareManager.startSharing(msg.quality, memberIds);
-            
-            // 发送共享 offer 给每个成员
-            for (const memberId of memberIds) {
-                const offer = await screenShareManager.createShareOffer(memberId, msg.quality);
-                mqttManager.publish({
-                    type: 'webRTC-offer-screen',
-                    target: memberId,
-                    sdp: offer.sdp,
-                    quality: msg.quality
-                });
-            }
-            
-            this.currentSharer = {
-                id: this.clientId,
-                name: this.nickname,
-                quality: msg.quality
-            };
-            
-            mqttManager.publish({
-                type: CONFIG.MSG_TYPE.SCREEN_SHARE_STARTED,
-                name: this.nickname,
-                quality: msg.quality
-            });
-            
-            uiManager.showSharedScreen(screenShareManager.screenStream, msg.quality);
-            uiManager.updateShareControls(this.isAdmin, true, this.isPC, this.shareRequests, msg.quality);
-            uiManager.showToast('屏幕共享已开始', 'success');
-            
-        } catch (err) {
-            console.error('[App] Start sharing error:', err);
-            uiManager.showToast('开始共享失败: ' + err.message, 'error');
-        }
-    }
-    
-    /**
-     * 处理共享拒绝
-     * @private
-     */
-    _handleScreenShareRejected(msg) {
-        uiManager.showToast('共享申请被管理员拒绝', 'warning');
-    }
-    
-    /**
-     * 处理共享开始
-     * @private
-     */
-    _handleScreenShareStarted(msg) {
-        this.currentSharer = {
-            id: msg.from,
-            name: msg.name,
-            quality: msg.quality
-        };
-        
-        uiManager.showToast(`${msg.name} 开始共享屏幕`, 'info');
-    }
-    
-    /**
-     * 处理共享停止
-     * @private
-     */
-    _handleScreenShareStop(msg) {
-        this.currentSharer = null;
-        uiManager.clearSharedScreen();
-        uiManager.updateShareControls(this.isAdmin, false, this.isPC, this.shareRequests, null);
-    }
-    
-    /**
-     * 处理共享撤销
-     * @private
-     */
-    _handleScreenShareRevoked(msg) {
-        screenShareManager.stopSharing();
-        this.currentSharer = null;
-        uiManager.clearSharedScreen();
-        uiManager.updateShareControls(this.isAdmin, false, this.isPC, this.shareRequests, null);
-        uiManager.showToast('管理员已撤销屏幕共享', 'warning');
-    }
-    
-    /**
-     * 处理画质变化
-     * @private
-     */
-    _handleQualityChange(msg) {
-        this.currentSharer.quality = msg.quality;
-        const settings = CONFIG.SCREEN_SHARE_QUALITY[msg.quality];
-        uiManager.qualityBadge.textContent = settings ? settings.label : msg.quality;
-    }
-    
-    /**
-     * 停止屏幕共享
-     */
-    async stopScreenShare() {
-        if (!screenShareManager.isSharing) return;
-        
-        await screenShareManager.stopSharing();
-        
-        mqttManager.publish({
-            type: CONFIG.MSG_TYPE.SCREEN_SHARE_STOP
-        });
-        
-        if (this.isAdmin) {
-            mqttManager.publish({
-                type: CONFIG.MSG_TYPE.SCREEN_SHARE_STOPPED,
-                reason: '共享者停止'
-            });
-        }
-        
-        this.currentSharer = null;
-        uiManager.clearSharedScreen();
-        uiManager.updateShareControls(this.isAdmin, false, this.isPC, this.shareRequests, null);
-    }
-    
-    /**
-     * 撤销屏幕共享（管理员）
-     */
-    revokeScreenShare() {
-        if (!this.currentSharer) return;
-        
-        mqttManager.publish({
-            type: CONFIG.MSG_TYPE.SCREEN_SHARE_REVOKED
-        });
-        
-        this.currentSharer = null;
-        uiManager.clearSharedScreen();
-        uiManager.updateShareControls(this.isAdmin, false, this.isPC, this.shareRequests, null);
-    }
-    
-    /**
-     * 切换共享画质
-     * @param {string} quality - 画质档位
-     */
-    async changeShareQuality(quality) {
-        await screenShareManager.changeQuality(quality);
-        
-        mqttManager.publish({
-            type: CONFIG.MSG_TYPE.QUALITY_CHANGE,
-            quality: quality
-        });
-        
-        if (this.currentSharer && this.currentSharer.id === this.clientId) {
-            this.currentSharer.quality = quality;
-        }
-        
-        const settings = CONFIG.SCREEN_SHARE_QUALITY[quality];
-        uiManager.qualityBadge.textContent = settings ? settings.label : quality;
-    }
-    
-    /**
-     * 画质降级回调
-     * @param {string} newQuality - 新画质
-     */
-    onQualityDowngraded(newQuality) {
-        this.currentSharer.quality = newQuality;
-        mqttManager.publish({
-            type: CONFIG.MSG_TYPE.QUALITY_CHANGE,
-            quality: newQuality
-        });
-        
-        const settings = CONFIG.SCREEN_SHARE_QUALITY[newQuality];
-        uiManager.qualityBadge.textContent = settings ? settings.label : newQuality;
-    }
-    
-    /**
-     * 发送共享 ICE candidate
-     * @param {string} target - 目标客户端 ID
-     * @param {object} candidate - ICE candidate
-     */
-    sendShareIceCandidate(target, candidate) {
-        mqttManager.publish({
-            type: 'webRTC-ice-screen',
-            target: target,
-            candidate: candidate,
-            isScreenShare: true
-        });
-    }
-    
-    /**
-     * 处理屏幕共享 offer
-     * @private
-     */
-    async _handleScreenShareOffer(msg) {
-        try {
-            const answer = await screenShareManager.handleShareOffer(msg.from, msg.sdp, msg.quality);
-            mqttManager.publish({
-                type: 'webRTC-answer-screen',
-                target: msg.from,
-                sdp: answer.sdp
-            });
-        } catch (err) {
-            console.error('[App] Handle screen share offer error:', err);
-        }
-    }
-    
-    /**
-     * 处理屏幕共享 answer
-     * @private
-     */
-    async _handleScreenShareAnswer(msg) {
-        try {
-            await screenShareManager.handleShareAnswer(msg.from, msg.sdp);
-        } catch (err) {
-            console.error('[App] Handle screen share answer error:', err);
-        }
-    }
-    
-    // ========== 管理员功能 ==========
-    
-    /**
-     * 踢出用户
-     * @param {string} userId - 用户 ID
-     */
-    kickUser(userId) {
-        mqttManager.publish({
-            type: CONFIG.MSG_TYPE.KICKED,
-            target: userId
-        });
-        
-        this._handleUserLeave(userId);
-    }
-    
-    /**
-     * 广播管理员离开
-     * @private
-     */
-    _broadcastAdminLeft() {
-        mqttManager.publish({
-            type: CONFIG.MSG_TYPE.ADMIN_LEFT
-        });
-    }
-    
-    // ========== 清理 ==========
-    
-    /**
-     * 清理状态
-     * @private
-     */
-    _cleanup() {
-        this.isInRoom = false;
-        this.isAdmin = false;
-        this.members.clear();
-        this.shareRequests = [];
-        this.currentSharer = null;
-        this.hasInitMedia = false;
-        
-        webrtcManager.closeAllConnections();
-        webrtcManager.localStream = null;
-        webrtcManager.isMicOn = false;
-        webrtcManager.isCameraOn = false;
-        
-        screenShareManager.stopSharing();
-        mqttManager.disconnect();
-        
-        uiManager.clearAllPips();
-        uiManager.clearSharedScreen();
-    }
-    
-    /**
-     * 重置状态（创建失败时）
-     * @private
-     */
-    _resetState() {
-        this.isInRoom = false;
-        this.isAdmin = false;
-        this.members.clear();
-        this.shareRequests = [];
-        this.currentSharer = null;
-        mqttManager.disconnect();
+    to {
+        opacity: 1;
+        transform: translateY(0);
     }
 }
 
-// 全局实例
-window.app = new App();
+/* ========== ????? ========== */
+#room-page {
+    display: none;
+    width: 100%;
+    height: 100%;
+    flex-direction: column;
+    background: var(--bg-base);
+}
 
-// 页面加载完成后初始化
-document.addEventListener('DOMContentLoaded', () => {
-    window.app.init();
-});
+#room-page.show {
+    display: flex;
+}
+
+/* ??? */
+.room-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 24px;
+    background: rgba(15, 22, 41, 0.78);
+    backdrop-filter: blur(20px) saturate(1.3);
+    -webkit-backdrop-filter: blur(20px) saturate(1.3);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+    z-index: 10;
+}
+
+.room-header-left {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+}
+
+.room-title {
+    font-size: 17px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    background: linear-gradient(135deg, #c7d2fe, #a78bfa);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.room-id-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 6px 14px;
+    background: rgba(99, 102, 241, 0.08);
+    border: 1px solid rgba(99, 102, 241, 0.2);
+    border-radius: 24px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--primary-light);
+    cursor: pointer;
+    transition: all 0.25s var(--ease-out);
+    font-family: 'SF Mono', 'Cascadia Code', 'Consolas', monospace;
+    letter-spacing: 0.06em;
+}
+
+.room-id-badge:hover {
+    background: rgba(99, 102, 241, 0.14);
+    border-color: rgba(99, 102, 241, 0.35);
+    box-shadow: 0 0 16px rgba(99, 102, 241, 0.12);
+}
+
+.room-member-count {
+    font-size: 12.5px;
+    color: var(--text-tertiary);
+    font-variant-numeric: tabular-nums;
+}
+
+.room-header-right {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+/* ========== ???? ========== */
+.room-main {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+    position: relative;
+}
+
+/* ???? */
+.main-view {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    background: var(--bg-surface);
+    overflow: hidden;
+}
+
+.main-view::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background:
+        radial-gradient(ellipse 70% 50% at 50% 0%, rgba(99, 102, 241, 0.04) 0%, transparent 60%),
+        radial-gradient(ellipse 50% 40% at 0% 100%, rgba(139, 92, 246, 0.03) 0%, transparent 50%);
+    pointer-events: none;
+}
+
+.main-video-container {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    background: var(--bg-base);
+}
+
+.main-video-container video {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+
+.waiting-screen {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 20px;
+    color: var(--text-secondary);
+    z-index: 1;
+}
+
+.waiting-screen .icon {
+    font-size: 72px;
+    opacity: 0.25;
+    filter: grayscale(0.3);
+    animation: waitingPulse 3s ease-in-out infinite;
+}
+
+.waiting-screen .text {
+    font-size: 16px;
+    opacity: 0.45;
+    letter-spacing: 0.02em;
+}
+
+@keyframes waitingPulse {
+    0%, 100% { opacity: 0.25; transform: scale(1); }
+    50% { opacity: 0.35; transform: scale(1.02); }
+}
+
+.main-view-overlay {
+    position: absolute;
+    top: 16px;
+    left: 16px;
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    z-index: 5;
+}
+
+.quality-badge {
+    padding: 6px 14px;
+    background: rgba(0, 0, 0, 0.55);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-radius: 20px;
+    font-size: 11.5px;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.quality-badge.live {
+    background: rgba(239, 68, 68, 0.75);
+    border-color: rgba(239, 68, 68, 0.4);
+    box-shadow: 0 0 16px rgba(239, 68, 68, 0.3);
+    animation: livePulse 2s ease-in-out infinite;
+}
+
+@keyframes livePulse {
+    0%, 100% { box-shadow: 0 0 16px rgba(239, 68, 68, 0.3); }
+    50% { box-shadow: 0 0 24px rgba(239, 68, 68, 0.5); }
+}
+
+/* ========== ????? ========== */
+.pip-grid {
+    position: absolute;
+    bottom: 20px;
+    right: 20px;
+    display: grid;
+    grid-template-columns: repeat(3, 128px);
+    grid-template-rows: repeat(2, 96px);
+    gap: 10px;
+    max-width: 416px;
+    z-index: 5;
+}
+
+.pip-video {
+    width: 128px;
+    height: 96px;
+    background: var(--bg-surface);
+    border-radius: var(--radius-xs);
+    overflow: hidden;
+    position: relative;
+    border: 1.5px solid var(--border);
+    transition: all 0.3s var(--ease-out);
+    box-shadow: var(--shadow-sm);
+}
+
+.pip-video:hover {
+    border-color: var(--border-hover);
+    transform: scale(1.02);
+    box-shadow: var(--shadow-md);
+}
+
+.pip-video video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.pip-video .name-label {
+    position: absolute;
+    bottom: 6px;
+    left: 6px;
+    padding: 3px 8px;
+    background: rgba(0, 0, 0, 0.65);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 500;
+    white-space: nowrap;
+    max-width: 100px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    letter-spacing: 0.02em;
+}
+
+.pip-video.muted::after {
+    content: '??';
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    font-size: 13px;
+    filter: drop-shadow(0 1px 2px rgba(0,0,0,0.5));
+}
+
+.pip-video.local {
+    border-color: rgba(99, 102, 241, 0.4);
+    box-shadow: 0 0 16px rgba(99, 102, 241, 0.15);
+}
+
+/* ========== ???? ========== */
+.side-panel {
+    width: 320px;
+    background: rgba(15, 22, 41, 0.78);
+    backdrop-filter: blur(20px) saturate(1.3);
+    -webkit-backdrop-filter: blur(20px) saturate(1.3);
+    border-left: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+}
+
+.panel-tabs {
+    display: flex;
+    border-bottom: 1px solid var(--border);
+}
+
+.panel-tab {
+    flex: 1;
+    padding: 14px 12px;
+    text-align: center;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: all 0.25s var(--ease-out);
+    color: var(--text-tertiary);
+    letter-spacing: 0.01em;
+}
+
+.panel-tab.active {
+    border-bottom-color: var(--primary);
+    color: var(--primary-light);
+    background: rgba(99, 102, 241, 0.04);
+}
+
+.panel-tab:hover:not(.active) {
+    color: var(--text-secondary);
+    background: rgba(255, 255, 255, 0.02);
+}
+
+.panel-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 18px;
+}
+
+.panel-section {
+    margin-bottom: 24px;
+}
+
+.panel-section-title {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-tertiary);
+    margin-bottom: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+}
+
+/* ========== ???? ========== */
+.member-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.member-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px;
+    background: var(--bg-glass);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    transition: all 0.25s var(--ease-out);
+    position: relative;
+    min-height: 60px;
+}
+
+.member-item:hover {
+    background: rgba(255, 255, 255, 0.04);
+    border-color: var(--border-hover);
+}
+
+/* ========== ?????? ========== */
+.member-video {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+    background: #000;
+    z-index: 1;
+    animation: fadeSlideIn 0.3s var(--ease-out);
+}
+
+.member-video video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.member-video-label {
+    position: absolute;
+    bottom: 4px;
+    left: 4px;
+    padding: 2px 6px;
+    background: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 500;
+    white-space: nowrap;
+    max-width: calc(100% - 8px);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    letter-spacing: 0.02em;
+    color: var(--text-secondary);
+}
+
+/* ????????????? */
+.member-item:has(.member-video) .member-avatar,
+.member-item:has(.member-video) .member-info {
+    opacity: 0;
+    pointer-events: none;
+}
+
+.member-avatar {
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--primary), #7c3aed);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    font-size: 14px;
+    flex-shrink: 0;
+    box-shadow: 0 2px 8px rgba(99, 102, 241, 0.2);
+}
+
+.member-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.member-name {
+    font-size: 13.5px;
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    letter-spacing: 0.01em;
+}
+
+.member-role {
+    font-size: 11.5px;
+    color: var(--text-tertiary);
+    margin-top: 2px;
+}
+
+.member-actions {
+    display: flex;
+    gap: 6px;
+}
+
+.member-actions button {
+    padding: 5px 10px;
+    font-size: 11.5px;
+}
+
+/* ========== ??? ========== */
+.control-bar {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    padding: 18px 24px;
+    background: rgba(15, 22, 41, 0.78);
+    backdrop-filter: blur(20px) saturate(1.3);
+    -webkit-backdrop-filter: blur(20px) saturate(1.3);
+    border-top: 1px solid var(--border);
+    flex-shrink: 0;
+}
+
+.control-btn {
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    border: 1px solid var(--border);
+    background: var(--bg-input);
+    color: var(--text-primary);
+    font-size: 20px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.3s var(--ease-out);
+    position: relative;
+    backdrop-filter: blur(8px);
+}
+
+.control-btn::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.06) 0%, transparent 60%);
+    pointer-events: none;
+}
+
+.control-btn:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: var(--border-hover);
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-sm);
+}
+
+.control-btn:active:not(:disabled) {
+    transform: translateY(0) scale(0.96);
+}
+
+.control-btn.active {
+    background: linear-gradient(180deg, var(--primary) 0%, var(--primary-dark) 100%);
+    border-color: var(--primary);
+    box-shadow: 0 4px 20px var(--primary-glow);
+}
+
+.control-btn.active::before {
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.12) 0%, transparent 50%);
+}
+
+.control-btn.danger {
+    background: linear-gradient(180deg, var(--danger) 0%, #dc2626 100%);
+    border-color: var(--danger);
+    box-shadow: 0 4px 20px var(--danger-glow);
+}
+
+.control-btn:disabled {
+    opacity: 0.25;
+    cursor: not-allowed;
+    transform: none !important;
+}
+
+.control-btn .tooltip {
+    position: absolute;
+    bottom: 58px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 7px 12px;
+    background: rgba(0, 0, 0, 0.85);
+    backdrop-filter: blur(12px);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-xs);
+    font-size: 11.5px;
+    font-weight: 500;
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    transition: all 0.2s var(--ease-out);
+    letter-spacing: 0.02em;
+    box-shadow: var(--shadow-md);
+}
+
+.control-btn:hover .tooltip {
+    opacity: 1;
+    transform: translateX(-50%) translateY(-4px);
+}
+
+/* ???????PC??? */
+.control-btn.screen-share-btn {
+    display: flex;
+}
+
+body.mobile .control-btn.screen-share-btn {
+    display: none;
+}
+
+/* ========== ??/??? ========== */
+.modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.65);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s var(--ease-out);
+}
+
+.modal-overlay.show {
+    opacity: 1;
+    pointer-events: all;
+}
+
+.modal {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 28px;
+    width: 90%;
+    max-width: 420px;
+    box-shadow: var(--shadow-lg);
+    transform: scale(0.92) translateY(8px);
+    transition: transform 0.35s var(--ease-spring);
+    position: relative;
+}
+
+.modal::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 1px;
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.06) 0%, transparent 50%);
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
+}
+
+.modal-overlay.show .modal {
+    transform: scale(1) translateY(0);
+}
+
+.modal-title {
+    font-size: 18px;
+    font-weight: 600;
+    margin-bottom: 18px;
+    letter-spacing: -0.01em;
+}
+
+.modal-body {
+    margin-bottom: 24px;
+    color: var(--text-secondary);
+    font-size: 14px;
+    line-height: 1.6;
+}
+
+.modal-actions {
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+}
+
+/* ========== ???? ========== */
+.quality-options {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.quality-option {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 14px 16px;
+    background: var(--bg-glass);
+    border: 1.5px solid var(--border);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.25s var(--ease-out);
+}
+
+.quality-option:hover {
+    border-color: var(--border-hover);
+    background: rgba(255, 255, 255, 0.04);
+}
+
+.quality-option.selected {
+    border-color: var(--primary);
+    background: rgba(99, 102, 241, 0.06);
+    box-shadow: 0 0 0 1px rgba(99, 102, 241, 0.15), 0 4px 16px rgba(99, 102, 241, 0.08);
+}
+
+.quality-option input {
+    display: none;
+}
+
+.quality-option .radio {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    border: 2px solid var(--text-tertiary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: all 0.25s var(--ease-out);
+}
+
+.quality-option.selected .radio {
+    border-color: var(--primary);
+    background: var(--primary);
+    box-shadow: 0 0 12px var(--primary-glow);
+}
+
+.quality-option.selected .radio::after {
+    content: '';
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: white;
+}
+
+.quality-option .info {
+    flex: 1;
+}
+
+.quality-option .label {
+    font-size: 14px;
+    font-weight: 500;
+    letter-spacing: 0.01em;
+}
+
+.quality-option .desc {
+    font-size: 12px;
+    color: var(--text-tertiary);
+    margin-top: 2px;
+}
+
+/* ========== ????? ========== */
+.device-section {
+    margin-bottom: 20px;
+}
+
+.device-group {
+    margin-bottom: 14px;
+}
+
+.device-group .panel-section-title {
+    margin-bottom: 8px;
+}
+
+.device-select {
+    width: 100%;
+    padding: 10px 14px;
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    font-size: 13.5px;
+    outline: none;
+    cursor: pointer;
+    transition: all 0.25s var(--ease-out);
+    appearance: none;
+    -webkit-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%2394a3b8' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    padding-right: 32px;
+}
+
+.device-select:hover {
+    border-color: var(--border-hover);
+}
+
+.device-select:focus {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px var(--primary-glow);
+}
+
+.device-select option {
+    background: var(--bg-elevated);
+    color: var(--text-primary);
+    padding: 8px;
+}
+.share-requests {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.share-request-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 14px;
+    background: var(--bg-glass);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+}
+
+.share-request-item .requester {
+    font-size: 13.5px;
+    color: var(--text-secondary);
+}
+
+.share-request-item .actions {
+    display: flex;
+    gap: 8px;
+}
+
+/* ========== Toast ?? ========== */
+.toast-container {
+    position: fixed;
+    top: 84px;
+    right: 24px;
+    z-index: 2000;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.toast {
+    padding: 14px 22px;
+    background: rgba(15, 22, 41, 0.9);
+    backdrop-filter: blur(16px) saturate(1.3);
+    -webkit-backdrop-filter: blur(16px) saturate(1.3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    box-shadow: var(--shadow-md);
+    font-size: 13.5px;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    animation: toastIn 0.4s var(--ease-spring);
+    border-left: 3px solid var(--primary);
+    letter-spacing: 0.01em;
+}
+
+.toast.success {
+    border-left-color: var(--success);
+}
+
+.toast.error {
+    border-left-color: var(--danger);
+}
+
+.toast.warning {
+    border-left-color: var(--warning);
+}
+
+@keyframes toastIn {
+    from {
+        transform: translateX(110%) scale(0.9);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0) scale(1);
+        opacity: 1;
+    }
+}
+
+@keyframes toastOut {
+    from {
+        transform: translateX(0) scale(1);
+        opacity: 1;
+    }
+    to {
+        transform: translateX(110%) scale(0.9);
+        opacity: 0;
+    }
+}
+
+.toast.hiding {
+    animation: toastOut 0.3s var(--ease-in-out) forwards;
+}
+
+/* ========== ??????? ========== */
+.connection-status {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 12px;
+    color: var(--text-tertiary);
+    letter-spacing: 0.02em;
+}
+
+.connection-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--text-tertiary);
+    transition: all 0.3s var(--ease-out);
+}
+
+.connection-dot.connected {
+    background: var(--success);
+    box-shadow: 0 0 8px var(--success-glow);
+}
+
+.connection-dot.disconnected {
+    background: var(--danger);
+    box-shadow: 0 0 8px var(--danger-glow);
+}
+
+.connection-dot.connecting {
+    background: var(--warning);
+    animation: pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.5; transform: scale(0.85); }
+}
+
+/* ========== ???? ========== */
+.loading-spinner {
+    width: 36px;
+    height: 36px;
+    border: 3px solid rgba(255, 255, 255, 0.08);
+    border-top-color: var(--primary);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+.loading-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(8, 12, 20, 0.92);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 18px;
+    z-index: 3000;
+}
+
+.loading-overlay .text {
+    font-size: 15px;
+    color: var(--text-secondary);
+    letter-spacing: 0.02em;
+}
+
+/* ========== ?????? ========== */
+.room-closed-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(8, 12, 20, 0.96);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 24px;
+    z-index: 4000;
+    padding: 24px;
+    text-align: center;
+    animation: fadeIn 0.4s var(--ease-out);
+}
+
+.room-closed-overlay h2 {
+    font-size: 26px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    color: var(--text-primary);
+}
+
+.room-closed-overlay p {
+    color: var(--text-secondary);
+    font-size: 15px;
+    max-width: 400px;
+    line-height: 1.6;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+/* ========== ??? ========== */
+@media (max-width: 768px) {
+    .side-panel {
+        display: none;
+    }
+    
+    .side-panel.mobile-show {
+        display: flex;
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        z-index: 50;
+        border-left: none;
+    }
+    
+    .pip-grid {
+        grid-template-columns: repeat(3, 96px);
+        grid-template-rows: repeat(2, 72px);
+        max-width: 312px;
+        gap: 8px;
+    }
+    
+    .pip-video {
+        width: 96px;
+        height: 72px;
+    }
+    
+    .control-bar {
+        gap: 10px;
+        padding: 14px 16px;
+    }
+    
+    .control-btn {
+        width: 44px;
+        height: 44px;
+        font-size: 18px;
+    }
+    
+    .room-header {
+        padding: 12px 16px;
+    }
+    
+    .room-title {
+        font-size: 15px;
+    }
+    
+    .home-container {
+        padding: 36px 28px;
+    }
+}
+
+@media (max-width: 480px) {
+    .pip-grid {
+        grid-template-columns: repeat(2, 88px);
+        grid-template-rows: repeat(3, 66px);
+        max-width: 188px;
+    }
+    
+    .pip-video {
+        width: 88px;
+        height: 66px;
+    }
+    
+    .home-container {
+        padding: 28px 22px;
+        margin: 12px;
+    }
+}
+
+/* ????????? */
+.mobile-panel-toggle {
+    display: none;
+}
+
+@media (max-width: 768px) {
+    .mobile-panel-toggle {
+        display: flex;
+    }
+}
+
+/* ??? */
+.hidden {
+    display: none !important;
+}
