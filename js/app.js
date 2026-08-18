@@ -10,13 +10,48 @@ class App {
         this.clientId = '';
         this.isAdmin = false;
         this.isPC = !webrtcManager.isMobile;
-        this.members = new Map(); // clientId -> {id, name, isAdmin, isPC, joinedAt}
-        this.memberHeartbeats = new Map(); // clientId -> lastHeartbeatTime
-        this.shareRequests = []; // 共享请求列表
-        this.currentSharer = null; // 当前共享者 {id, name, quality}
+        this.members = new Map();
+        this.memberHeartbeats = new Map();
+        this.shareRequests = [];
+        this.currentSharer = null;
         this.isInRoom = false;
         this.hasInitMedia = false;
         this._heartbeatCheckInterval = null;
+        this._reconnecting = false;
+    }
+    
+    /**
+     * 保存房间状态到 localStorage
+     */
+    _saveState() {
+        const state = {
+            roomId: this.roomId,
+            nickname: this.nickname,
+            clientId: this.clientId,
+            isAdmin: this.isAdmin,
+            isPC: this.isPC
+        };
+        localStorage.setItem('watchtogether_room', JSON.stringify(state));
+    }
+    
+    /**
+     * 从 localStorage 恢复房间状态
+     */
+    _loadState() {
+        try {
+            const saved = localStorage.getItem('watchtogether_room');
+            if (saved) {
+                return JSON.parse(saved);
+            }
+        } catch (e) {}
+        return null;
+    }
+    
+    /**
+     * 清除保存的状态
+     */
+    _clearState() {
+        localStorage.removeItem('watchtogether_room');
     }
     
     /**
@@ -60,7 +95,66 @@ class App {
             console.log('[App] MQTT disconnected, waiting for reconnect...');
         };
         
+        // 检查是否有保存的房间状态，有则自动重连
+        this._tryReconnect();
+        
         console.log('[App] Initialized, clientId:', this.clientId);
+    }
+    
+    /**
+     * 尝试从 localStorage 恢复房间状态并重新连接
+     */
+    async _tryReconnect() {
+        const saved = this._loadState();
+        if (!saved || !saved.roomId) return;
+        
+        console.log('[App] Found saved room, reconnecting...', saved);
+        this._reconnecting = true;
+        
+        // 恢复状态
+        this.roomId = saved.roomId;
+        this.nickname = saved.nickname;
+        this.isAdmin = saved.isAdmin;
+        this.isPC = saved.isPC;
+        
+        try {
+            uiManager.showLoading('正在重新连接房间...');
+            
+            // 连接 MQTT
+            await mqttManager.connect(this.roomId);
+            
+            // 初始化媒体
+            await this._initLocalMedia();
+            
+            // 重新注册自己
+            this.members.set(this.clientId, {
+                id: this.clientId,
+                name: this.nickname,
+                isAdmin: this.isAdmin,
+                isPC: this.isPC,
+                joinedAt: Date.now()
+            });
+            this.memberHeartbeats.set(this.clientId, Date.now());
+            this.isInRoom = true;
+            
+            // 切换到房间页面
+            uiManager.showRoom();
+            uiManager.updateRoomInfo(this.roomId, this.members.size);
+            uiManager.updateMemberList(Array.from(this.members.values()), this.clientId, this.isAdmin);
+            uiManager.hideLoading();
+            uiManager.showToast('已重新连接房间', 'success');
+            
+            // 加载设备列表
+            this._loadDevices();
+            
+        } catch (err) {
+            console.error('[App] Reconnect failed:', err);
+            uiManager.hideLoading();
+            uiManager.showToast('重新连接失败: ' + err.message, 'error');
+            this._clearState();
+        } finally {
+            this._reconnecting = false;
+        }
     }
     
     /**
@@ -88,6 +182,9 @@ class App {
                 joinedAt: Date.now()
             });
             this.memberHeartbeats.set(this.clientId, Date.now());
+            
+            // 保存状态，刷新后恢复
+            this._saveState();
             
             // 广播房间创建消息
             mqttManager.publish({
@@ -161,6 +258,9 @@ class App {
      */
     async leaveRoom() {
         if (!this.isInRoom) return;
+        
+        // 清除保存的状态
+        this._clearState();
         
         // 发送离开消息
         mqttManager.publish({
@@ -466,6 +566,9 @@ class App {
         uiManager.updateMemberList(Array.from(this.members.values()), this.clientId, this.isAdmin);
         uiManager.hideLoading();
         uiManager.showToast('已加入房间！', 'success');
+        
+        // 保存状态，刷新后恢复
+        this._saveState();
         
         // 加载音视频设备列表
         this._loadDevices();
@@ -1138,6 +1241,7 @@ class App {
         this.hasInitMedia = false;
         
         this._stopHeartbeatCheck();
+        this._clearState();
         
         webrtcManager.closeAllConnections();
         webrtcManager.localStream = null;
